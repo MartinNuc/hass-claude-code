@@ -1,0 +1,8 @@
+build_from:
+  amd64: ghcr.io/home-assistant/amd64-base:latest
+  aarch64: ghcr.io/home-assistant/aarch64-base:latest
+
+labels:
+  org.opencontainers.image.title: "Claude Code Agent"
+  org.opencontainers.image.description: "Headless Claude Code with Telegram Channels and Remote Control"
+  org.opencontainers.image.source: "https://github.com/YOUR_GITHUB_USER/hass-claude-code-agent"

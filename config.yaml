@@ -1,0 +1,35 @@
+name: "Claude Code Agent"
+version: "1.0.0"
+slug: "claude-code-agent"
+description: "Headless Claude Code with Telegram Channels and Remote Control, connected to Home Assistant via MCP."
+url: ""
+
+arch:
+  - amd64
+  - aarch64
+
+startup: application
+boot: auto
+init: false
+apparmor: false
+
+# Add-on gets SUPERVISOR_TOKEN automatically — used as HA MCP token by default
+homeassistant_api: true
+auth_api: true
+hassio_api: true
+
+map:
+  - homeassistant_config:rw
+  - ssl:ro
+  - share:rw
+  - addon_config:rw
+
+options:
+  telegram_bot_token: ""
+  ha_url: ""
+  ha_token: ""
+
+schema:
+  telegram_bot_token: str
+  ha_url: str?
+  ha_token: str?
