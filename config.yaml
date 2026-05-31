@@ -20,6 +20,7 @@ map:
   - addon_config:rw
 
 options:
+  telegram_bot_token: ""
   ha_url: ""
   ha_token: ""
 

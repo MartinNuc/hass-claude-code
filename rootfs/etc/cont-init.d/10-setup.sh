@@ -9,11 +9,19 @@ mkdir -p \
   /data/.claude/channels/telegram \
   /data/.claude/sessions
 
+chmod 700 \
+  /data/.claude \
+  /data/.claude/channels \
+  /data/.claude/channels/telegram \
+  /data/.claude/sessions
+
 # ── OAuth credentials ────────────────────────────────────────────────────────
 if [[ ! -f "/data/.claude/.credentials.json" ]]; then
   bashio::log.warning "No Claude credentials found."
   bashio::log.warning "Starting 'claude login' — open the URL printed below in a browser."
   bashio::log.warning "Waiting for auth to complete before starting the daemon..."
+  bashio::log.warning "The add-on will wait here until you complete the login."
+  bashio::log.warning "Check the log output below for the authentication URL:"
   # claude login prints a URL and polls for completion (device-code / URL flow)
   HOME=/root CLAUDE_CONFIG_DIR=/data/.claude claude login
   bashio::log.info "Login complete."
@@ -38,25 +46,19 @@ fi
 
 bashio::log.info "Writing HA MCP config (URL: ${HA_URL})"
 
-cat > /data/.claude/mcp.json << EOF
-{
-  "mcpServers": {
-    "home-assistant": {
-      "command": "uvx",
-      "args": ["hass-mcp"],
-      "env": {
-        "HA_TOKEN": "${HA_TOKEN}",
-        "HA_URL": "${HA_URL}"
-      }
-    }
-  }
-}
-EOF
+jq -n \
+  --arg token "${HA_TOKEN}" \
+  --arg url   "${HA_URL}" \
+  '{mcpServers: {"home-assistant": {command: "hass-mcp", args: [], env: {HA_TOKEN: $token, HA_URL: $url}}}}' \
+  > /data/.claude/mcp.json
 # Permissions: only owner can read (contains HA token)
 chmod 600 /data/.claude/mcp.json
 
 # ── Telegram bot token ───────────────────────────────────────────────────────
-TELEGRAM_BOT_TOKEN="$(bashio::config 'telegram_bot_token')"
+TELEGRAM_BOT_TOKEN=""
+if bashio::config.has_value 'telegram_bot_token'; then
+  TELEGRAM_BOT_TOKEN="$(bashio::config 'telegram_bot_token')"
+fi
 if [[ -z "${TELEGRAM_BOT_TOKEN}" ]]; then
   bashio::log.warning "telegram_bot_token is empty. Telegram channel will not connect."
 else
