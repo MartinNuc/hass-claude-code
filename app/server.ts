@@ -57,6 +57,12 @@ interface WsCtx {
   writer: WritableStreamDefaultWriter<Uint8Array>;
 }
 
+if (typeof Bun.openpty !== "function") {
+  console.error("[terminal] ERROR: Bun.openpty() is not available in this Bun version.");
+  console.error("[terminal] Bun version:", Bun.version);
+  process.exit(1);
+}
+
 Bun.serve<WsCtx>({
   port: 7681,
 
