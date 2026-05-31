@@ -16,8 +16,11 @@ chmod 700 \
   /data/.claude/sessions
 
 # ── OAuth credentials ────────────────────────────────────────────────────────
-# Credential check is handled in start.sh so that the web terminal (ttyd)
-# always starts and can be used to run: claude auth login
+# Pre-create settings.json so Claude skips the first-run theme wizard
+if [[ ! -f "/data/.claude/settings.json" ]]; then
+  bashio::log.info "Creating default Claude settings (dark theme)..."
+  echo '{"theme":"dark"}' > /data/.claude/settings.json
+fi
 
 # ── HA MCP config (@coolver/home-assistant-mcp via npx) ─────────────────────
 # HA_AGENT_URL: URL of the HA Vibecode Agent add-on (default: port 8099 on HA host)
