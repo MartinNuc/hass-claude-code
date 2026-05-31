@@ -34,7 +34,7 @@ Your phone (Telegram) → Claude Code Channels → claude process (on HA host) �
 2. Click the three-dot menu in the top-right and choose **Repositories**.
 3. Add the repository URL:
    ```
-   https://github.com/MartinNuc/hass-claude-cod
+   https://github.com/MartinNuc/hass-claude-code
    ```
 4. Find **Claude Code Agent** in the store and click **Install**.
 
