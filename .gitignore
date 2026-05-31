@@ -1,14 +1,27 @@
 # Secrets — never commit
 *.env
 .env
+.env.*
+# HA Supervisor runtime data — contains secrets at runtime
 /data/
 *credentials*
 *token*
 
 # Build artifacts
 *.tar
+*.tar.gz
+*.tgz
 *.log
+npm-debug.log*
+
+# Node
+node_modules/
+.npm/
+
+# s6-overlay runtime state
+supervise/
 
 # Editor
 .DS_Store
 .vscode/
+.idea/
