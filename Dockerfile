@@ -9,7 +9,6 @@ RUN apk add --no-cache \
     jq \
     nodejs \
     npm \
-    ttyd \
     ca-certificates \
     tzdata \
     unzip
@@ -20,6 +19,14 @@ SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
 # Install to /opt/bun so it's available regardless of HOME at runtime
 RUN curl -fsSL https://bun.sh/install | BUN_INSTALL=/opt/bun bash
 ENV PATH="/opt/bun/bin:${PATH}"
+
+# Install xterm.js browser assets for the web terminal (served from add-on to avoid CSP issues)
+RUN npm install --prefix /tmp/xterm @xterm/xterm@5.5.0 @xterm/addon-fit@0.10.0 --save=false && \
+    mkdir -p /app/assets && \
+    cp /tmp/xterm/node_modules/@xterm/xterm/lib/xterm.js      /app/assets/ && \
+    cp /tmp/xterm/node_modules/@xterm/xterm/css/xterm.css     /app/assets/ && \
+    cp /tmp/xterm/node_modules/@xterm/addon-fit/lib/addon-fit.js /app/assets/ && \
+    rm -rf /tmp/xterm
 
 # Install Claude Code via official installer
 # The installer places the binary at /root/.local/bin/claude
@@ -56,6 +63,7 @@ RUN chmod +x \
     /etc/services.d/claude/finish \
     /etc/services.d/ttyd/run \
     /etc/services.d/ttyd/finish \
-    /app/start.sh
+    /app/start.sh \
+    /app/server.ts
 
 WORKDIR /root
