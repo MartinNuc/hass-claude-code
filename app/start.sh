@@ -2,6 +2,7 @@
 # shellcheck shell=bash
 set -euo pipefail
 
+# Belt-and-suspenders: re-export tool paths in case s6 resets the image ENV.
 # Bun and uv must be on PATH for channel plugins and hass-mcp at runtime
 export PATH="/opt/bun/bin:/opt/uv/bin:/root/.local/bin:${PATH}"
 
@@ -25,8 +26,12 @@ bashio::log.info "  7. In Remote Control: /telegram:access policy allowlist"
 # that the channel could not register. Install it via Remote Control (steps above)
 # and restart the add-on — it persists in /data/.claude/plugins/.
 
+# autonomy_mode=auto (always): --dangerously-skip-permissions is unconditional by design.
+# Safety is provided by: container isolation, scoped HA token, git-backed HA config.
+
+# Merge stderr into stdout so all output reaches the add-on log via s6
+exec 2>&1
 exec claude \
   --dangerously-skip-permissions \
   --remote-control \
-  --channels "plugin:telegram@claude-plugins-official" \
-  2>&1
+  --channels "plugin:telegram@claude-plugins-official"
