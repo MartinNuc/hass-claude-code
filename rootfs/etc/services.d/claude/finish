@@ -1,0 +1,4 @@
+#!/usr/bin/with-contenv bashio
+# shellcheck shell=bash
+# $1 = exit code of the run script, $2 = signal number (if killed by signal)
+bashio::log.warning "Claude Code exited with code ${1} (signal ${2}). s6 will restart..."
