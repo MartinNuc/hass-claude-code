@@ -16,14 +16,28 @@ chmod 700 \
   /data/.claude/sessions
 
 # ── OAuth credentials ────────────────────────────────────────────────────────
+# Allow dropping credentials into the user-accessible addon_config folder
+# (/addon_configs/claude-code-agent/ on the host — reachable via Samba or SSH add-on)
+if [[ ! -f "/data/.claude/.credentials.json" ]] && [[ -f "/addon_config/.credentials.json" ]]; then
+  bashio::log.info "Found credentials in addon_config — copying to persistent storage."
+  cp /addon_config/.credentials.json /data/.claude/.credentials.json
+  chmod 600 /data/.claude/.credentials.json
+fi
+
 if [[ ! -f "/data/.claude/.credentials.json" ]]; then
-  bashio::log.warning "No Claude credentials found."
-  bashio::log.warning "Starting 'claude auth login' — a URL will appear below."
-  bashio::log.warning "Open that URL in a browser to authenticate. The add-on waits here until done."
-  # claude auth login is the correct subcommand; it uses a device-code/URL flow
-  # and blocks until the browser auth completes.
-  HOME=/root CLAUDE_CONFIG_DIR=/data/.claude claude auth login
-  bashio::log.info "Login complete."
+  bashio::log.error "════════════════════════════════════════════════════════"
+  bashio::log.error "No Claude credentials found."
+  bashio::log.error ""
+  bashio::log.error "To authenticate:"
+  bashio::log.error "  1. On your laptop/desktop, run:  claude auth login"
+  bashio::log.error "  2. Complete the browser OAuth flow."
+  bashio::log.error "  3. Copy ~/.claude/.credentials.json from your laptop"
+  bashio::log.error "     to the add-on config folder on your HA host:"
+  bashio::log.error "     /addon_configs/claude-code-agent/.credentials.json"
+  bashio::log.error "     (use the Samba or SSH add-on to copy the file)"
+  bashio::log.error "  4. Restart this add-on."
+  bashio::log.error "════════════════════════════════════════════════════════"
+  exit 1
 fi
 
 # ── HA MCP config (@coolver/home-assistant-mcp via npx) ─────────────────────
