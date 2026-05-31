@@ -22,8 +22,9 @@ RUN curl -fsSL https://bun.sh/install | BUN_INSTALL=/opt/bun bash
 ENV PATH="/opt/bun/bin:${PATH}"
 
 # Install uv (Python package manager — needed for hass-mcp which requires Python >=3.13)
+# The uv installer places binaries directly in UV_INSTALL_DIR (not a bin/ subdir)
 RUN curl -LsSf https://astral.sh/uv/install.sh | UV_INSTALL_DIR=/opt/uv sh
-ENV PATH="/opt/uv/bin:${PATH}"
+ENV PATH="/opt/uv:${PATH}"
 
 # Install hass-mcp (Home Assistant MCP server)
 # Uses uv to pull Python >=3.13 and install hass-mcp in an isolated environment
@@ -32,7 +33,8 @@ ENV PATH="/root/.local/bin:${PATH}"
 
 # Install Claude Code via official installer
 # The installer places the binary at /root/.local/bin/claude
-RUN curl -fsSL https://claude.ai/install.sh | sh
+# Use bash explicitly — Alpine's /bin/sh (busybox ash) doesn't support the installer syntax
+RUN curl -fsSL https://claude.ai/install.sh | bash
 
 # Verify Claude Code version supports Channels (requires >=2.1.80)
 RUN CLAUDE_VERSION=$(claude --version 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1) && \
