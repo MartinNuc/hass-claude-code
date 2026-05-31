@@ -1,0 +1,5 @@
+#!/usr/bin/with-contenv bashio
+# shellcheck shell=bash
+# Web terminal — accessible via the add-on Web UI tab in HA.
+# Use this to run: claude auth login
+exec ttyd --port 7681 bash

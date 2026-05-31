@@ -8,6 +8,21 @@ export PATH="/opt/bun/bin:/root/.local/bin:${PATH}"
 
 # CLAUDE_CONFIG_DIR is set via Dockerfile ENV — Claude reads all config from /data/.claude
 
+# ── Credential check ─────────────────────────────────────────────────────────
+if [[ ! -f "/data/.claude/.credentials.json" ]]; then
+  bashio::log.warning "════════════════════════════════════════════════════"
+  bashio::log.warning "Claude is not authenticated yet."
+  bashio::log.warning ""
+  bashio::log.warning "Open the Web UI tab of this add-on to get a terminal,"
+  bashio::log.warning "then run:  claude auth login"
+  bashio::log.warning ""
+  bashio::log.warning "Complete the browser flow. The daemon will start"
+  bashio::log.warning "automatically on the next retry (60 s)."
+  bashio::log.warning "════════════════════════════════════════════════════"
+  sleep 60
+  exit 1
+fi
+
 bashio::log.info "Starting Claude Code daemon..."
 bashio::log.info "  Remote Control: enabled (--remote-control)"
 bashio::log.info "  Channels: telegram"

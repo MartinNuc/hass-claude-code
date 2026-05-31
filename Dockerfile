@@ -9,6 +9,7 @@ RUN apk add --no-cache \
     jq \
     nodejs \
     npm \
+    ttyd \
     ca-certificates \
     tzdata \
     unzip
@@ -53,6 +54,8 @@ RUN chmod +x \
     /etc/cont-init.d/10-setup.sh \
     /etc/services.d/claude/run \
     /etc/services.d/claude/finish \
+    /etc/services.d/ttyd/run \
+    /etc/services.d/ttyd/finish \
     /app/start.sh
 
 WORKDIR /root
