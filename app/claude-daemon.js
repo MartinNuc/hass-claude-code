@@ -34,7 +34,17 @@ const wizards = [
 ];
 
 proc.onData((data) => {
-  process.stdout.write(data);
+  // Strip ANSI escape codes and non-printable chars before logging.
+  // Claude's TUI renders via terminal control sequences which look like
+  // garbage in plain text add-on logs.
+  const clean = data
+    .replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "")  // CSI sequences
+    .replace(/\x1b./g, "")                      // other escape sequences
+    .replace(/[^\x20-\x7E\n\r\t]/g, "");        // non-printable / non-ASCII
+
+  // Only log lines that have meaningful printable content
+  const lines = clean.split(/\r?\n/).filter(l => l.trim().length > 2);
+  if (lines.length > 0) process.stdout.write(lines.join("\n") + "\n");
 
   buf += collapse(stripAnsi(data));
   if (buf.length > 4000) buf = buf.slice(-2000);
