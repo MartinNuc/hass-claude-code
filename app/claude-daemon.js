@@ -1,7 +1,7 @@
 "use strict";
 // Wraps the claude process in a PTY so it detects a terminal and enters
 // interactive mode (required for --remote-control and --channels to work).
-// Also auto-answers the first-run theme wizard if settings.json wasn't pre-seeded.
+// Also auto-answers the first-run theme wizard.
 
 const pty = require("node-pty");
 
@@ -18,8 +18,10 @@ const proc = pty.spawn("claude", [
   env:  { ...process.env, HOME: "/root" },
 });
 
-// Strip ANSI escape codes for reliable text matching
+// Claude's TUI renders via cursor-positioning escape codes, so spaces between
+// words are absent after stripping ANSI. Match collapsed (no-whitespace) text.
 const stripAnsi = (s) => s.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "").replace(/\x1b./g, "");
+const collapse  = (s) => s.replace(/\s+/g, "");
 
 let wizardHandled = false;
 let buf = "";
@@ -29,14 +31,22 @@ proc.onData((data) => {
 
   if (wizardHandled) return;
 
-  buf += stripAnsi(data);
-  if (buf.length > 2000) buf = buf.slice(-1000); // keep buffer bounded
+  buf += collapse(stripAnsi(data));
+  if (buf.length > 3000) buf = buf.slice(-1500);
 
-  if (buf.includes("Choose the text style")) {
-    // First-run wizard: option 2 (Dark mode) is pre-selected — press Enter to confirm
-    setTimeout(() => { proc.write("\r"); wizardHandled = true; }, 400);
-  } else if (buf.includes("Syntax theme")) {
-    // Wizard already completed (or skipped via settings.json)
+  // "Choose the text style" wizard — option 2 (Dark mode) is pre-selected.
+  // Send "2" + Enter to confirm it explicitly.
+  if (buf.includes("Choosethetextstyle") || buf.includes("Darkmode") || buf.includes("darkmode")) {
+    setTimeout(() => {
+      if (!wizardHandled) {
+        proc.write("2\r");
+        wizardHandled = true;
+      }
+    }, 600);
+  }
+
+  // Once we see the syntax theme line the wizard is complete.
+  if (buf.includes("Syntaxtheme") || buf.includes("syntaxtheme")) {
     wizardHandled = true;
     buf = "";
   }
