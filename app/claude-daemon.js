@@ -7,7 +7,7 @@ const pty = require("node-pty");
 
 const proc = pty.spawn("claude", [
   "--permission-mode", "auto",
-  "--remote-control",
+  "--remote-control", "Home Assistant",
   "--channels", "plugin:telegram@claude-plugins-official",
   "--mcp-config", "/data/.claude/mcp.json",
 ], {
