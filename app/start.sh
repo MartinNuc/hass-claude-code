@@ -26,7 +26,7 @@ fi
 bashio::log.info "Starting Claude Code daemon..."
 bashio::log.info "  Remote Control: enabled (--remote-control)"
 bashio::log.info "  Channels: telegram"
-bashio::log.info "  Permissions: --dangerously-skip-permissions"
+bashio::log.info "  Permissions: --permission-mode auto"
 bashio::log.info ""
 bashio::log.info "FIRST TIME SETUP — if Telegram channel is not working:"
 bashio::log.info "  1. Connect via Remote Control at claude.ai/code"
@@ -41,13 +41,10 @@ bashio::log.info "  7. In Remote Control: /telegram:access policy allowlist"
 # that the channel could not register. Install it via Remote Control (steps above)
 # and restart the add-on — it persists in /data/.claude/plugins/.
 
-# autonomy_mode=auto (always): --dangerously-skip-permissions is unconditional by design.
-# Safety is provided by: container isolation, scoped HA token, git-backed HA config.
-
 # Merge stderr into stdout so all output reaches the add-on log via s6
 exec 2>&1
 exec claude \
-  --dangerously-skip-permissions \
+  --permission-mode auto \
   --remote-control \
   --channels "plugin:telegram@claude-plugins-official" \
   --mcp-config /data/.claude/mcp.json
