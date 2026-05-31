@@ -16,13 +16,17 @@ chmod 700 \
   /data/.claude/sessions
 
 # ── OAuth credentials ────────────────────────────────────────────────────────
-# Pre-create settings.json so Claude skips the first-run theme wizard.
-# The auto-answer in claude-daemon.js is the primary fix; this is belt-and-suspenders.
+# Pre-create settings.json to skip first-run wizards (theme + workspace trust).
+# The auto-answer in claude-daemon.js handles anything the settings miss.
 if [[ ! -f "/data/.claude/settings.json" ]]; then
-  bashio::log.info "Creating default Claude settings (dark theme)..."
-  # Try known Claude Code settings keys for the theme selection wizard
-  jq -n '{theme:"dark",colorTheme:"dark",preferredTheme:"dark"}' \
-    > /data/.claude/settings.json
+  bashio::log.info "Creating default Claude settings..."
+  jq -n '{
+    theme: "dark",
+    colorTheme: "dark",
+    preferredTheme: "dark",
+    trustedDirectories: ["/root", "/"],
+    hasCompletedOnboarding: true
+  }' > /data/.claude/settings.json
 fi
 
 # ── HA MCP config (@coolver/home-assistant-mcp via npx) ─────────────────────

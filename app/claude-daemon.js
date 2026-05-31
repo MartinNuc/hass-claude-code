@@ -1,7 +1,7 @@
 "use strict";
 // Wraps the claude process in a PTY so it detects a terminal and enters
 // interactive mode (required for --remote-control and --channels to work).
-// Also auto-answers the first-run theme wizard.
+// Auto-answers first-run wizards (theme selection, workspace trust).
 
 const pty = require("node-pty");
 
@@ -18,37 +18,32 @@ const proc = pty.spawn("claude", [
   env:  { ...process.env, HOME: "/root" },
 });
 
-// Claude's TUI renders via cursor-positioning escape codes, so spaces between
+// Claude's TUI renders via cursor-positioning escape codes so spaces between
 // words are absent after stripping ANSI. Match collapsed (no-whitespace) text.
 const stripAnsi = (s) => s.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "").replace(/\x1b./g, "");
 const collapse  = (s) => s.replace(/\s+/g, "");
 
-let wizardHandled = false;
 let buf = "";
+
+// Pending auto-answer: { pattern, response, handled }
+const wizards = [
+  // Theme selection — option 2 (Dark mode) is pre-selected; send "2" + Enter
+  { pattern: /Choosethetextstyle|Darkmode|darkmode/,   response: "2\r", handled: false },
+  // Workspace trust — option 1 (Yes, I trust this folder); send "1" + Enter
+  { pattern: /Itrustthisfolder|trustthisfolder|Quicksafetycheck/, response: "1\r", handled: false },
+];
 
 proc.onData((data) => {
   process.stdout.write(data);
 
-  if (wizardHandled) return;
-
   buf += collapse(stripAnsi(data));
-  if (buf.length > 3000) buf = buf.slice(-1500);
+  if (buf.length > 4000) buf = buf.slice(-2000);
 
-  // "Choose the text style" wizard — option 2 (Dark mode) is pre-selected.
-  // Send "2" + Enter to confirm it explicitly.
-  if (buf.includes("Choosethetextstyle") || buf.includes("Darkmode") || buf.includes("darkmode")) {
-    setTimeout(() => {
-      if (!wizardHandled) {
-        proc.write("2\r");
-        wizardHandled = true;
-      }
-    }, 600);
-  }
-
-  // Once we see the syntax theme line the wizard is complete.
-  if (buf.includes("Syntaxtheme") || buf.includes("syntaxtheme")) {
-    wizardHandled = true;
-    buf = "";
+  for (const w of wizards) {
+    if (!w.handled && w.pattern.test(buf)) {
+      w.handled = true;
+      setTimeout(() => proc.write(w.response), 600);
+    }
   }
 });
 
