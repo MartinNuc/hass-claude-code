@@ -71,6 +71,7 @@ RUN chmod +x \
     /etc/services.d/claude/finish \
     /etc/services.d/ttyd/run \
     /etc/services.d/ttyd/finish \
-    /app/start.sh
+    /app/start.sh \
+    /app/claude-daemon.js
 
 WORKDIR /root

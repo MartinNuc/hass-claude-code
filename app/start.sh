@@ -41,10 +41,7 @@ bashio::log.info "  7. In Remote Control: /telegram:access policy allowlist"
 # that the channel could not register. Install it via Remote Control (steps above)
 # and restart the add-on — it persists in /data/.claude/plugins/.
 
-# Merge stderr into stdout so all output reaches the add-on log via s6
+# Run claude via node-pty so it sees a TTY and enters interactive mode.
+# Without a PTY, claude falls back to print mode and errors on missing input.
 exec 2>&1
-exec claude \
-  --permission-mode auto \
-  --remote-control \
-  --channels "plugin:telegram@claude-plugins-official" \
-  --mcp-config /data/.claude/mcp.json
+exec node /app/claude-daemon.js
