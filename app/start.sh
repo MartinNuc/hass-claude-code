@@ -2,11 +2,7 @@
 # shellcheck shell=bash
 set -euo pipefail
 
-# Belt-and-suspenders: re-export Bun path in case s6 resets the image ENV.
-# Bun is required for Claude Code Channels plugins (e.g. Telegram).
 export PATH="/opt/bun/bin:/root/.local/bin:${PATH}"
-
-# CLAUDE_CONFIG_DIR is set via Dockerfile ENV — Claude reads all config from /data/.claude
 
 # ── Credential check ─────────────────────────────────────────────────────────
 if [[ ! -f "/data/.claude/.credentials.json" ]]; then
@@ -24,24 +20,10 @@ if [[ ! -f "/data/.claude/.credentials.json" ]]; then
 fi
 
 bashio::log.info "Starting Claude Code daemon..."
-bashio::log.info "  Remote Control: enabled (--remote-control)"
-bashio::log.info "  Channels: telegram"
-bashio::log.info "  Permissions: --permission-mode auto"
-bashio::log.info ""
-bashio::log.info "FIRST TIME SETUP — if Telegram channel is not working:"
-bashio::log.info "  1. Connect via Remote Control at claude.ai/code"
-bashio::log.info "  2. Run: /plugin install telegram@claude-plugins-official"
-bashio::log.info "  3. Run: /reload-plugins"
-bashio::log.info "  4. Restart this add-on"
-bashio::log.info "  5. Message your Telegram bot to get a pairing code"
-bashio::log.info "  6. In Remote Control: /telegram:access pair <code>"
-bashio::log.info "  7. In Remote Control: /telegram:access policy allowlist"
-
-# If the Telegram plugin is not yet installed, Claude starts normally but logs
-# that the channel could not register. Install it via Remote Control (steps above)
-# and restart the add-on — it persists in /data/.claude/plugins/.
+bashio::log.info "  Remote Control: enabled — connect at claude.ai/code or Claude mobile app"
+bashio::log.info "  Session name: Home Assistant"
+bashio::log.info "  Permission mode: auto"
 
 # Run claude via node-pty so it sees a TTY and enters interactive mode.
-# Without a PTY, claude falls back to print mode and errors on missing input.
 exec 2>&1
 exec node /app/claude-daemon.js
