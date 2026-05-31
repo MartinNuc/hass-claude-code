@@ -18,12 +18,11 @@ chmod 700 \
 # ── OAuth credentials ────────────────────────────────────────────────────────
 if [[ ! -f "/data/.claude/.credentials.json" ]]; then
   bashio::log.warning "No Claude credentials found."
-  bashio::log.warning "Starting 'claude login' — open the URL printed below in a browser."
-  bashio::log.warning "Waiting for auth to complete before starting the daemon..."
-  bashio::log.warning "The add-on will wait here until you complete the login."
-  bashio::log.warning "Check the log output below for the authentication URL:"
-  # claude login prints a URL and polls for completion (device-code / URL flow)
-  HOME=/root CLAUDE_CONFIG_DIR=/data/.claude claude login
+  bashio::log.warning "Starting 'claude auth login' — a URL will appear below."
+  bashio::log.warning "Open that URL in a browser to authenticate. The add-on waits here until done."
+  # claude auth login is the correct subcommand; it uses a device-code/URL flow
+  # and blocks until the browser auth completes.
+  HOME=/root CLAUDE_CONFIG_DIR=/data/.claude claude auth login
   bashio::log.info "Login complete."
 fi
 

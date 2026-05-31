@@ -34,4 +34,5 @@ exec 2>&1
 exec claude \
   --dangerously-skip-permissions \
   --remote-control \
-  --channels "plugin:telegram@claude-plugins-official"
+  --channels "plugin:telegram@claude-plugins-official" \
+  --mcp-config /data/.claude/mcp.json
