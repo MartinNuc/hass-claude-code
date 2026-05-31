@@ -2,4 +2,4 @@
 # shellcheck shell=bash
 # Web terminal — accessible via the add-on Web UI tab in HA.
 # Use this to run: claude auth login
-exec bun run /app/server.ts
+exec node /app/server.js

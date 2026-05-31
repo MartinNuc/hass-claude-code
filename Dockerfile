@@ -24,10 +24,17 @@ ENV PATH="/opt/bun/bin:${PATH}"
 # Install xterm.js browser assets for the web terminal (served from add-on to avoid CSP issues)
 RUN npm install --prefix /tmp/xterm @xterm/xterm@5.5.0 @xterm/addon-fit@0.10.0 --save=false && \
     mkdir -p /app/assets && \
-    cp /tmp/xterm/node_modules/@xterm/xterm/lib/xterm.js      /app/assets/ && \
-    cp /tmp/xterm/node_modules/@xterm/xterm/css/xterm.css     /app/assets/ && \
+    cp /tmp/xterm/node_modules/@xterm/xterm/lib/xterm.js         /app/assets/ && \
+    cp /tmp/xterm/node_modules/@xterm/xterm/css/xterm.css        /app/assets/ && \
     cp /tmp/xterm/node_modules/@xterm/addon-fit/lib/addon-fit.js /app/assets/ && \
     rm -rf /tmp/xterm
+
+# Install terminal server Node.js dependencies.
+# node-pty requires native compilation — build tools are removed after.
+COPY app/package.json /app/package.json
+RUN apk add --no-cache --virtual .node-build python3 make g++ linux-headers && \
+    cd /app && npm install --omit=dev && \
+    apk del .node-build
 
 # Install Claude Code via official installer
 # The installer places the binary at /root/.local/bin/claude
@@ -64,7 +71,6 @@ RUN chmod +x \
     /etc/services.d/claude/finish \
     /etc/services.d/ttyd/run \
     /etc/services.d/ttyd/finish \
-    /app/start.sh \
-    /app/server.ts
+    /app/start.sh
 
 WORKDIR /root
