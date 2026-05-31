@@ -24,6 +24,7 @@ ENV PATH="/opt/bun/bin:${PATH}"
 # The installer places the binary at /root/.local/bin/claude
 # Use bash explicitly — Alpine's /bin/sh (busybox ash) doesn't support the installer syntax
 RUN curl -fsSL https://claude.ai/install.sh | bash
+ENV PATH="/root/.local/bin:${PATH}"
 
 # Verify Claude Code version supports Channels (requires >=2.1.80)
 RUN CLAUDE_VERSION=$(claude --version 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1) && \
