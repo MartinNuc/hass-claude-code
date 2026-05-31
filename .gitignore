@@ -1,0 +1,14 @@
+# Secrets — never commit
+*.env
+.env
+/data/
+*credentials*
+*token*
+
+# Build artifacts
+*.tar
+*.log
+
+# Editor
+.DS_Store
+.vscode/
