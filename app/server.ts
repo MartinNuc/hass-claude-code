@@ -1,8 +1,9 @@
 /// <reference types="bun-types" />
+import { spawn } from "child_process";
 
-// Web terminal server for Claude Code Agent add-on.
-// Uses Bun's native PTY + WebSocket APIs.
-// Serves xterm.js from local files (avoids HA ingress CSP restrictions on inline scripts).
+// Web terminal server — uses Bun's HTTP/WebSocket with Node.js child_process for PTY.
+// Avoids Bun.openpty() (experimental) and native node-pty (requires build tools).
+// The PTY is provided by `script -q /dev/null bash` which is part of Alpine's util-linux.
 
 const INGRESS_PATH = Bun.env.HASSIO_INGRESS_PATH ?? "";
 
@@ -10,8 +11,6 @@ const xtermJs  = Bun.file("/app/assets/xterm.js");
 const xtermCss = Bun.file("/app/assets/xterm.css");
 const fitJs    = Bun.file("/app/assets/addon-fit.js");
 
-// HTML uses INGRESS placeholder replaced at serve time so the WebSocket URL
-// and asset paths are always correct regardless of the HA ingress token.
 const HTML_TEMPLATE = `<!DOCTYPE html>
 <html>
 <head>
@@ -53,85 +52,60 @@ const HTML_TEMPLATE = `<!DOCTYPE html>
 </body>
 </html>`;
 
-interface WsCtx {
-  writer: WritableStreamDefaultWriter<Uint8Array>;
+interface Session {
+  proc: ReturnType<typeof spawn>;
 }
 
-if (typeof Bun.openpty !== "function") {
-  console.error("[terminal] ERROR: Bun.openpty() is not available in this Bun version.");
-  console.error("[terminal] Bun version:", Bun.version);
-  process.exit(1);
-}
-
-Bun.serve<WsCtx>({
+Bun.serve<Session>({
   port: 7681,
 
   fetch(req, server) {
     const url  = new URL(req.url);
     let   path = url.pathname;
-
-    // Strip ingress prefix so paths are relative to add-on root
     if (INGRESS_PATH && path.startsWith(INGRESS_PATH))
       path = path.slice(INGRESS_PATH.length) || "/";
 
-    if (path === "/ws") {
-      server.upgrade(req);
-      return;
-    }
-    if (path === "/xterm.js")
-      return new Response(xtermJs,  { headers: { "content-type": "application/javascript" } });
-    if (path === "/xterm.css")
-      return new Response(xtermCss, { headers: { "content-type": "text/css" } });
-    if (path === "/addon-fit.js")
-      return new Response(fitJs,    { headers: { "content-type": "application/javascript" } });
+    if (path === "/ws") { server.upgrade(req); return; }
+    if (path === "/xterm.js")     return new Response(xtermJs,  { headers: { "content-type": "application/javascript" } });
+    if (path === "/xterm.css")    return new Response(xtermCss, { headers: { "content-type": "text/css" } });
+    if (path === "/addon-fit.js") return new Response(fitJs,    { headers: { "content-type": "application/javascript" } });
 
     const html = HTML_TEMPLATE.replaceAll("INGRESS", INGRESS_PATH);
     return new Response(html, { headers: { "content-type": "text/html" } });
   },
 
   websocket: {
-    async open(ws) {
-      const pty = Bun.openpty();
-
-      Bun.spawn(["bash", "-i"], {
-        stdin:  pty.slave,
-        stdout: pty.slave,
-        stderr: pty.slave,
+    open(ws) {
+      // `script -q /dev/null bash` allocates a real PTY via util-linux's script command.
+      // This gives bash full readline/prompt support without needing node-pty or Bun.openpty().
+      const proc = spawn("script", ["-q", "/dev/null", "bash"], {
         env: {
           ...process.env,
-          TERM: "xterm-256color",
-          HOME: "/root",
+          TERM:  "xterm-256color",
+          HOME:  "/root",
+          SHELL: "/bin/bash",
         },
+        // script allocates its own PTY; we talk to it via stdin/stdout pipes
       });
 
-      const writer = pty.master.writable.getWriter();
-      ws.data = { writer };
+      ws.data = { proc };
 
-      // Stream PTY output → WebSocket client
-      (async () => {
-        const reader = pty.master.readable.getReader();
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            ws.sendBinary(value);
-          }
-        } catch { /* PTY closed */ }
-        ws.close();
-      })();
+      proc.stdout.on("data", (chunk: Buffer) => {
+        ws.sendBinary(new Uint8Array(chunk));
+      });
+      proc.stderr.on("data", (chunk: Buffer) => {
+        ws.sendBinary(new Uint8Array(chunk));
+      });
+      proc.on("close", () => ws.close());
     },
 
     message(ws, msg) {
-      if (typeof msg === "string") {
-        // Control messages (e.g. resize) — ignored for now
-        return;
-      }
-      // Binary = keyboard input → PTY stdin
-      ws.data.writer.write(new Uint8Array(msg as ArrayBuffer)).catch(() => {});
+      if (typeof msg === "string") return; // resize/control — ignore for now
+      ws.data.proc.stdin!.write(Buffer.from(msg as ArrayBuffer));
     },
 
     close(ws) {
-      ws.data.writer.close().catch(() => {});
+      ws.data.proc.kill();
     },
   },
 });

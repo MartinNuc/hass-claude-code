@@ -9,6 +9,7 @@ RUN apk add --no-cache \
     jq \
     nodejs \
     npm \
+    util-linux \
     ca-certificates \
     tzdata \
     unzip
