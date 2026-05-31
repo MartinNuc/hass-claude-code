@@ -11,12 +11,14 @@ const xtermJs  = Bun.file("/app/assets/xterm.js");
 const xtermCss = Bun.file("/app/assets/xterm.css");
 const fitJs    = Bun.file("/app/assets/addon-fit.js");
 
-const HTML_TEMPLATE = `<!DOCTYPE html>
+// All asset paths are relative — HA strips the ingress prefix before forwarding
+// to the add-on, so relative URLs resolve correctly without knowing the token.
+const HTML = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <title>Claude Code Terminal</title>
-  <link rel="stylesheet" href="INGRESS/xterm.css">
+  <link rel="stylesheet" href="xterm.css">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body, #terminal { height: 100%; background: #1e1e2e; }
@@ -24,8 +26,8 @@ const HTML_TEMPLATE = `<!DOCTYPE html>
 </head>
 <body>
   <div id="terminal"></div>
-  <script src="INGRESS/xterm.js"></script>
-  <script src="INGRESS/addon-fit.js"></script>
+  <script src="xterm.js"></script>
+  <script src="addon-fit.js"></script>
   <script>
     const term = new Terminal({ cursorBlink: true, scrollback: 5000, fontSize: 14 });
     const fit  = new FitAddon.FitAddon();
@@ -34,9 +36,11 @@ const HTML_TEMPLATE = `<!DOCTYPE html>
     fit.fit();
     window.addEventListener('resize', () => fit.fit());
 
-    const ws = new WebSocket(
-      (location.protocol === 'https:' ? 'wss:' : 'ws:')
-      + '//' + location.host + 'INGRESS/ws'
+    // Derive WebSocket URL from the page location — works regardless of ingress path.
+    const loc  = window.location;
+    const base = loc.pathname.endsWith('/') ? loc.pathname : loc.pathname + '/';
+    const ws   = new WebSocket(
+      (loc.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + loc.host + base + 'ws'
     );
     ws.binaryType = 'arraybuffer';
 
@@ -60,18 +64,15 @@ Bun.serve<Session>({
   port: 7681,
 
   fetch(req, server) {
-    const url  = new URL(req.url);
-    let   path = url.pathname;
-    if (INGRESS_PATH && path.startsWith(INGRESS_PATH))
-      path = path.slice(INGRESS_PATH.length) || "/";
+    // HA ingress strips the token prefix before forwarding — we always see clean paths.
+    const path = new URL(req.url).pathname;
 
     if (path === "/ws") { server.upgrade(req); return; }
     if (path === "/xterm.js")     return new Response(xtermJs,  { headers: { "content-type": "application/javascript" } });
     if (path === "/xterm.css")    return new Response(xtermCss, { headers: { "content-type": "text/css" } });
     if (path === "/addon-fit.js") return new Response(fitJs,    { headers: { "content-type": "application/javascript" } });
 
-    const html = HTML_TEMPLATE.replaceAll("INGRESS", INGRESS_PATH);
-    return new Response(html, { headers: { "content-type": "text/html" } });
+    return new Response(HTML, { headers: { "content-type": "text/html" } });
   },
 
   websocket: {
