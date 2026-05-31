@@ -21,10 +21,10 @@ map:
 
 options:
   telegram_bot_token: ""
-  ha_url: ""
-  ha_token: ""
+  ha_agent_url: ""
+  ha_agent_key: ""
 
 schema:
   telegram_bot_token: str
-  ha_url: str?
-  ha_token: str?
+  ha_agent_url: str?
+  ha_agent_key: str

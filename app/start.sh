@@ -2,9 +2,9 @@
 # shellcheck shell=bash
 set -euo pipefail
 
-# Belt-and-suspenders: re-export tool paths in case s6 resets the image ENV.
-# Bun and uv must be on PATH for channel plugins and hass-mcp at runtime
-export PATH="/opt/bun/bin:/opt/uv/bin:/root/.local/bin:${PATH}"
+# Belt-and-suspenders: re-export Bun path in case s6 resets the image ENV.
+# Bun is required for Claude Code Channels plugins (e.g. Telegram).
+export PATH="/opt/bun/bin:/root/.local/bin:${PATH}"
 
 # CLAUDE_CONFIG_DIR is set via Dockerfile ENV — Claude reads all config from /data/.claude
 

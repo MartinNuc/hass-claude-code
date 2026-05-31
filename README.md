@@ -44,11 +44,11 @@ Your phone (Telegram) → Claude Code Channels → claude process (on HA host) �
 
 | Option | Required | Default | Description |
 |---|---|---|---|
-| `telegram_bot_token` | Yes | — | Token from @BotFather. The Telegram channel will not connect without this. |
-| `ha_url` | No | `http://supervisor/core` | URL of your HA instance. The default works on HAOS via the internal Supervisor network. Change this only if you are running in a non-standard setup. |
-| `ha_token` | No | Supervisor token (auto-injected) | Long-lived HA access token. On HAOS the add-on uses the Supervisor-provided token automatically; set this only if you want to restrict scope further or are not on HAOS. |
+| `telegram_bot_token` | Yes | — | Token from [@BotFather](https://t.me/BotFather). The Telegram channel will not connect without this. |
+| `ha_agent_key` | Yes | — | API key from the [HA Vibecode Agent](https://github.com/Coolver/home-assistant-mcp) add-on Web UI. |
+| `ha_agent_url` | No | `http://homeassistant:8099` | URL of the HA Vibecode Agent. The default works on HAOS. Change only if you run the agent on a non-standard port or host. |
 
-Set `telegram_bot_token` before starting the add-on for the first time.
+Set both `telegram_bot_token` and `ha_agent_key` before starting the add-on for the first time.
 
 ---
 
@@ -58,7 +58,7 @@ The Telegram plugin must be installed once via Claude's Remote Control interface
 
 ### Step 1 — Authenticate with Claude
 
-Start the add-on. If no credentials exist, the init script runs `claude login` automatically and prints an authentication URL to the add-on log.
+Start the add-on. If no credentials exist, the init script runs `claude auth login` automatically and prints an authentication URL to the add-on log.
 
 1. Open **Settings → Add-ons → Claude Code Agent → Log**.
 2. Find the line that contains a `https://claude.ai/...` URL.

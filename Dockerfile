@@ -9,7 +9,6 @@ RUN apk add --no-cache \
     jq \
     nodejs \
     npm \
-    python3 \
     ca-certificates \
     tzdata \
     unzip
@@ -20,16 +19,6 @@ SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
 # Install to /opt/bun so it's available regardless of HOME at runtime
 RUN curl -fsSL https://bun.sh/install | BUN_INSTALL=/opt/bun bash
 ENV PATH="/opt/bun/bin:${PATH}"
-
-# Install uv (Python package manager — needed for hass-mcp which requires Python >=3.13)
-# The uv installer places binaries directly in UV_INSTALL_DIR (not a bin/ subdir)
-RUN curl -LsSf https://astral.sh/uv/install.sh | UV_INSTALL_DIR=/opt/uv sh
-ENV PATH="/opt/uv:${PATH}"
-
-# Install hass-mcp (Home Assistant MCP server)
-# Uses uv to pull Python >=3.13 and install hass-mcp in an isolated environment
-RUN UV_TOOL_BIN_DIR=/root/.local/bin uv tool install hass-mcp
-ENV PATH="/root/.local/bin:${PATH}"
 
 # Install Claude Code via official installer
 # The installer places the binary at /root/.local/bin/claude

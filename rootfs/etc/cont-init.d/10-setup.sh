@@ -26,31 +26,28 @@ if [[ ! -f "/data/.claude/.credentials.json" ]]; then
   bashio::log.info "Login complete."
 fi
 
-# ── HA MCP config ────────────────────────────────────────────────────────────
-# Use Supervisor-provided token by default; let user override via add-on options
-HA_TOKEN="${SUPERVISOR_TOKEN:-}"
-if bashio::config.has_value 'ha_token'; then
-  HA_TOKEN="$(bashio::config 'ha_token')"
+# ── HA MCP config (@coolver/home-assistant-mcp via npx) ─────────────────────
+# HA_AGENT_URL: URL of the HA Vibecode Agent add-on (default: port 8099 on HA host)
+# HA_AGENT_KEY: API key from the Vibecode Agent add-on Web UI (required)
+HA_AGENT_URL="http://homeassistant:8099"
+if bashio::config.has_value 'ha_agent_url'; then
+  HA_AGENT_URL="$(bashio::config 'ha_agent_url')"
 fi
 
-HA_URL="http://supervisor/core"
-if bashio::config.has_value 'ha_url'; then
-  HA_URL="$(bashio::config 'ha_url')"
-fi
-
-if [[ -z "${HA_TOKEN}" ]]; then
-  bashio::log.error "No HA token available. Set ha_token in add-on options or ensure homeassistant_api is enabled in config.yaml."
+HA_AGENT_KEY="$(bashio::config 'ha_agent_key')"
+if [[ -z "${HA_AGENT_KEY}" ]]; then
+  bashio::log.error "ha_agent_key is required. Get it from the HA Vibecode Agent add-on Web UI."
   exit 1
 fi
 
-bashio::log.info "Writing HA MCP config (URL: ${HA_URL})"
+bashio::log.info "Writing HA MCP config (agent URL: ${HA_AGENT_URL})"
 
 jq -n \
-  --arg token "${HA_TOKEN}" \
-  --arg url   "${HA_URL}" \
-  '{mcpServers: {"home-assistant": {command: "hass-mcp", args: [], env: {HA_TOKEN: $token, HA_URL: $url}}}}' \
+  --arg url "${HA_AGENT_URL}" \
+  --arg key "${HA_AGENT_KEY}" \
+  '{mcpServers: {"home-assistant": {command: "npx", args: ["-y", "@coolver/home-assistant-mcp@latest"], env: {HA_AGENT_URL: $url, HA_AGENT_KEY: $key}}}}' \
   > /data/.claude/mcp.json
-# Permissions: only owner can read (contains HA token)
+# Permissions: only owner can read (contains HA agent key)
 chmod 600 /data/.claude/mcp.json
 
 # ── Telegram bot token ───────────────────────────────────────────────────────
