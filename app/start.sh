@@ -19,9 +19,17 @@ if [[ ! -f "/data/.claude/.credentials.json" ]]; then
   exit 1
 fi
 
+# Shown as this host's name in the Remote Control list at claude.ai/code.
+# claude-daemon.js applies the same fallback if this is blank.
+SESSION_NAME="Home Assistant"
+if bashio::config.has_value 'session_name'; then
+  SESSION_NAME="$(bashio::config 'session_name')"
+fi
+export SESSION_NAME
+
 bashio::log.info "Starting Claude Code daemon..."
 bashio::log.info "  Remote Control: enabled — connect at claude.ai/code or Claude mobile app"
-bashio::log.info "  Session name: Home Assistant"
+bashio::log.info "  Session name: ${SESSION_NAME}"
 bashio::log.info "  Permission mode: auto"
 
 # Run claude via node-pty so it sees a TTY and enters interactive mode.

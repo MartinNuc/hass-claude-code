@@ -1,0 +1,26 @@
+configuration:
+  session_name:
+    name: Remote Control session name
+    description: >-
+      The name this Home Assistant shows in the Remote Control list at
+      claude.ai/code and in the Claude mobile app. Useful if you run Claude
+      Code on more than one machine. Leave blank to use "Home Assistant".
+  ha_agent_url:
+    name: HA Vibecode Agent URL
+    description: >-
+      Where to reach the separate HA Vibecode Agent add-on, which gives the
+      Remote Control session its Home Assistant tools. Leave blank for the
+      default (http://homeassistant:8099), which works on HAOS.
+  ha_agent_key:
+    name: HA Vibecode Agent API key
+    description: >-
+      API key copied from the HA Vibecode Agent add-on's Web UI. Optional —
+      leave blank if you do not run that add-on. The Remote Control session
+      then starts with no Home Assistant tools; the Assist agent is unaffected.
+  ha_mcp_token:
+    name: Home Assistant MCP token
+    description: >-
+      Long-lived access token for Home Assistant's own MCP server, used by the
+      Assist conversation agent. Only needed if Home Assistant rejects the
+      Supervisor token — check the add-on log, which reports which token it
+      used and whether the connection worked.
