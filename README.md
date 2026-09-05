@@ -61,14 +61,11 @@ This is what lets the Remote Control session read entity states and deploy chang
 
 > Treat this key like a password. It grants control of your Home Assistant. Don't paste it into a chat, a screenshot, or a public repo. If it ever leaks, the same page has a **Regenerate Key** button.
 
-**Get its hostname.** Still on the Vibecode Agent add-on, go to the **Info** tab. In the right-hand column under Controls you'll find **Hostname** — something like `a22e6bb0-home-assistant-cursor-agent`. Copy it. The hash prefix is unique to your install, so it isn't guessable and there's no universal default.
-
-**Configure this add-on.** Open Claude Code Agent → **Configuration**:
-
-- **HA Vibecode Agent API key** → the key you copied
-- **HA Vibecode Agent URL** → `http://<the hostname you copied>:8099`
+**Configure this add-on.** Open Claude Code Agent → **Configuration**, paste the key into **HA Vibecode Agent API key**, and leave **HA Vibecode Agent URL** blank — the default `http://homeassistant:8099` works on a standard HAOS install.
 
 Save, then **Restart** the add-on. The log should say `Writing HA MCP config (agent URL: …)`. If it warns that the key is blank instead, the save didn't take.
+
+> If Claude can't reach the agent, set the URL explicitly: on the Vibecode Agent's **Info** tab, under Controls, copy **Hostname** (something like `a22e6bb0-home-assistant-cursor-agent`) and use `http://<that hostname>:8099`. Don't use the `homeassistant.local` address the Vibecode UI suggests — that one is for Cursor or VS Code on your laptop and does not resolve from inside a container.
 
 Ask Claude something like *"what lights do I have?"* from claude.ai/code to confirm.
 
@@ -124,7 +121,7 @@ Talk to it from the Assist icon in the top-right of the sidebar. Try *"which lig
 |---|---|---|
 | Claude Code Remote Control session name | `Home Assistant` | The name this instance shows at claude.ai/code. Change it if you run Claude Code on more than one machine. |
 | HA Vibecode Agent API key | — | From the Vibecode Agent Web UI, step 3. Blank means the Remote Control session starts with no Home Assistant tools. |
-| HA Vibecode Agent URL | `http://homeassistant:8099` | Use `http://<Vibecode hostname>:8099` from that add-on's Info tab. The default only works if that name resolves on your install. |
+| HA Vibecode Agent URL | `http://homeassistant:8099` | Leave blank; the default works on a standard HAOS install. Override with `http://<Vibecode hostname>:8099` from that add-on's Info tab only if it can't connect. |
 | Home Assistant MCP token | — | **Leave blank.** Only needed if the log says the Supervisor token was rejected. |
 | Home Assistant URL (advanced) | `http://homeassistant:8123` | **Leave blank.** Ignored unless an MCP token is set. This means Home Assistant itself — *not* the Vibecode Agent add-on, which goes in the row above it. |
 | Log Claude daemon output (debugging) | off | Noisy debug logging. Turn on only if the Remote Control session never appears. |
@@ -157,7 +154,7 @@ Watch your usage at [claude.ai](https://claude.ai). Stop the add-on when you're 
 
 **No Remote Control session at claude.ai/code** — Confirm the add-on is running and you're signed into the same Claude account. If it's still missing, turn on **Log Claude daemon output** and restart; the log will then show what the session is waiting on.
 
-**Remote Control can't see entities** — Step 4. Check the log says `Writing HA MCP config`, and that the Vibecode Agent URL uses that add-on's actual hostname.
+**Remote Control can't see entities** — Step 4. Check the log says `Writing HA MCP config`. If the key is set and it still can't connect, override the Vibecode Agent URL with that add-on's own hostname from its Info tab.
 
 **Assist replies but controls nothing** — Look for `HA MCP server reachable (HTTP 200)` in the add-on log. Anything else is printed as a loud multi-line error naming the cause. Then confirm the Model Context Protocol Server integration is installed and your entities are exposed.
 
