@@ -1,6 +1,9 @@
 {
   "name": "claude-code-agent-terminal",
   "private": true,
+  "scripts": {
+    "test": "node --test"
+  },
   "dependencies": {
     "node-pty": "^1.0.0",
     "ws": "^8.18.0"

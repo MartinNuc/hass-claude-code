@@ -1,0 +1,70 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to the Claude Code Agent add-on",
+        "description": "These are normally filled in for you by the add-on. Change them only if you run the add-on somewhere unusual.",
+        "data": {
+          "base_url": "Add-on URL",
+          "token": "Prompt API token"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reconnect to the Claude Code Agent add-on",
+        "description": "The add-on rejected the stored token. A fresh one is filled in below if the add-on left one.",
+        "data": {
+          "token": "Prompt API token"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not reach the add-on. Check that it is running and that the URL is correct.",
+      "invalid_auth": "The add-on rejected this token. Copy it again from the add-on log.",
+      "unknown": "Unexpected error."
+    },
+    "abort": {
+      "single_instance_allowed": "The Claude Code Agent add-on is already configured.",
+      "reauth_successful": "Reconnected to the add-on."
+    }
+  },
+  "config_subentries": {
+    "conversation": {
+      "initiate_flow": {
+        "user": "Add a Claude agent",
+        "reconfigure": "Reconfigure this Claude agent"
+      },
+      "entry_type": "Conversation agent",
+      "step": {
+        "init": {
+          "title": "Claude conversation agent",
+          "data": {
+            "name": "Name",
+            "model": "Model",
+            "prompt": "Instructions"
+          },
+          "data_description": {
+            "model": "Faster models answer voice commands sooner; stronger models handle complex requests better.",
+            "prompt": "Instructions given to Claude at the start of every conversation."
+          }
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "cannot_connect": {
+      "message": "Sorry, the Claude add-on isn't responding."
+    },
+    "invalid_auth": {
+      "message": "Sorry, the Claude add-on rejected its access token. Reconnect the integration in Settings."
+    },
+    "busy": {
+      "message": "Sorry, Claude is busy right now. Try again in a moment."
+    },
+    "timeout": {
+      "message": "Sorry, Claude took too long to answer."
+    },
+    "unsupported_attachment": {
+      "message": "Sorry, I can't look at images yet."
+    }
+  }
+}

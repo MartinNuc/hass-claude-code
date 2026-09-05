@@ -1,0 +1,26 @@
+configuration:
+  session_name:
+    name: Claude Code Remote Control session name
+    description: >-
+      The name this Home Assistant shows in the Remote Control list at
+      claude.ai/code and in the Claude mobile app. Useful if you run Claude
+      Code on more than one machine. Leave blank to use "Home Assistant".
+  ha_agent_url:
+    name: HA Vibecode Agent URL
+    description: >-
+      Where to reach the separate HA Vibecode Agent add-on, which gives the
+      Remote Control session its Home Assistant tools. Leave blank for the
+      default (http://homeassistant:8099), which works on HAOS.
+  ha_agent_key:
+    name: HA Vibecode Agent API key
+    description: >-
+      API key copied from the HA Vibecode Agent add-on's Web UI. Optional —
+      leave blank if you do not run that add-on. The Remote Control session
+      then starts with no Home Assistant tools; the Assist agent is unaffected.
+  debug_daemon_output:
+    name: Log Claude daemon output (debugging)
+    description: >-
+      Write the Remote Control session's terminal output to the add-on log.
+      Off by default, because it is noisy. Turn it on if the session never
+      appears at claude.ai/code — without it the log cannot show what the
+      session is waiting on.

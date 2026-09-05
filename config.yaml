@@ -1,7 +1,7 @@
 name: "Claude Code Agent"
-version: "1.5.2"
+version: "1.8.0"
 slug: "claude-code-agent"
-description: "Headless Claude Code with Telegram Channels and Remote Control, connected to Home Assistant via MCP."
+description: "Headless Claude Code with Remote Control and an Assist conversation agent, connected to Home Assistant via MCP."
 url: "https://github.com/MartinNuc/hass-claude-code"
 
 arch:
@@ -17,7 +17,7 @@ ingress_port: 7681
 ingress_stream: true
 panel_icon: mdi:console
 
-# Add-on gets SUPERVISOR_TOKEN automatically — used as HA MCP token by default
+# Add-on gets SUPERVISOR_TOKEN automatically — how the Assist agent reaches HA
 homeassistant_api: true
 
 map:
@@ -25,9 +25,13 @@ map:
   - addon_config:rw
 
 options:
+  session_name: "Home Assistant"
   ha_agent_url: ""
   ha_agent_key: ""
+  debug_daemon_output: false
 
 schema:
+  session_name: str?
   ha_agent_url: str?
-  ha_agent_key: str
+  ha_agent_key: str?
+  debug_daemon_output: bool?
