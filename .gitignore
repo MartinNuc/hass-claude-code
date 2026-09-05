@@ -25,3 +25,9 @@ supervise/
 .DS_Store
 .vscode/
 .idea/
+
+# Superpowers SDD scratch
+.superpowers/
+
+# Python test env
+.venv/
