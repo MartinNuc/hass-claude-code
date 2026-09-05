@@ -65,13 +65,21 @@ COPY rootfs /
 # Copy app scripts
 COPY app /app
 
+# Custom integration deployed into the user's HA config by 30-deploy-integration.sh
+COPY custom_components /app/custom_components
+
 RUN chmod +x \
     /etc/cont-init.d/10-setup.sh \
+    /etc/cont-init.d/20-mcp-assist.sh \
+    /etc/cont-init.d/30-deploy-integration.sh \
     /etc/services.d/claude/run \
     /etc/services.d/claude/finish \
     /etc/services.d/ttyd/run \
     /etc/services.d/ttyd/finish \
+    /etc/services.d/prompt-api/run \
+    /etc/services.d/prompt-api/finish \
     /app/start.sh \
-    /app/claude-daemon.js
+    /app/claude-daemon.js \
+    /app/prompt-api.js
 
 WORKDIR /root

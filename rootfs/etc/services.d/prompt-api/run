@@ -1,0 +1,13 @@
+#!/usr/bin/with-contenv bashio
+# shellcheck shell=bash
+# HTTP prompt API consumed by the claude_code_conversation custom integration.
+export PATH="/opt/bun/bin:/root/.local/bin:${PATH}"
+
+if [[ ! -f "/data/.claude/.credentials.json" ]]; then
+  bashio::log.warning "prompt-api: Claude is not authenticated yet; retrying in 60s."
+  sleep 60
+  exit 1
+fi
+
+exec 2>&1
+exec node /app/prompt-api.js
