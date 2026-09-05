@@ -89,6 +89,7 @@ and if one has to change, change it here first.
 hass-claude-code/
   CLAUDE.md                  # this file
   README.md                  # human-facing setup/usage
+  CHANGELOG.md               # shown in HA's update dialog — see §14
   config.yaml                # HA add-on manifest (options, ingress, maps)
   build.yaml                 # base images + OCI labels
   repository.yaml            # add-on repository metadata
@@ -282,7 +283,34 @@ tests never spend tokens. Both suites run without a container.
 
 ---
 
-## 13. Out of scope (for now)
+## 13. Releasing
+
+Home Assistant decides an update is available by comparing the installed
+version against `version:` in `config.yaml` — not against a git tag. A merge
+to `main` without a version bump ships nothing.
+
+Every user-visible change therefore does three things together:
+
+1. Bump `version:` in `config.yaml`. Semver against user-visible behaviour:
+   patch for a fix, minor for a feature, major for a break.
+2. Add a section at the TOP of `CHANGELOG.md`, headed `## <version>`. HA
+   renders this file in the update dialog, so a missing entry shows the user
+   "No changelog found" — the reason this file exists.
+3. Tag the merge commit `v<version>`.
+
+The changelog is read by someone deciding whether to click Update, on a phone,
+who does not know the internals. So: what changed for them and whether it
+needs action from them — not which file moved. A breaking change leads with
+what to do BEFORE updating, because Supervisor validates saved options against
+the schema and a leftover value for a removed key stops the add-on from
+starting. That is the failure mode this project actually shipped, in 1.8.0.
+
+Commit messages are for the repository and stay technical; changelog entries
+are for users and do not. Do not paste one into the other.
+
+---
+
+## 14. Out of scope (for now)
 
 - Multi-user / multi-session management.
 - Any custom agent loop or bot framework.
