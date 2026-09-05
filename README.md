@@ -125,8 +125,8 @@ Talk to it from the Assist icon in the top-right of the sidebar. Try *"which lig
 | Claude Code Remote Control session name | `Home Assistant` | The name this instance shows at claude.ai/code. Change it if you run Claude Code on more than one machine. |
 | HA Vibecode Agent API key | — | From the Vibecode Agent Web UI, step 3. Blank means the Remote Control session starts with no Home Assistant tools. |
 | HA Vibecode Agent URL | `http://homeassistant:8099` | Use `http://<Vibecode hostname>:8099` from that add-on's Info tab. The default only works if that name resolves on your install. |
-| Home Assistant MCP token | — | Leave blank. Only needed if the log says the Supervisor token was rejected. |
-| Home Assistant URL (advanced) | `http://homeassistant:8123` | Ignored unless an MCP token is set. Set it if you serve HA on another port. |
+| Home Assistant MCP token | — | **Leave blank.** Only needed if the log says the Supervisor token was rejected. |
+| Home Assistant URL (advanced) | `http://homeassistant:8123` | **Leave blank.** Ignored unless an MCP token is set. This means Home Assistant itself — *not* the Vibecode Agent add-on, which goes in the row above it. |
 | Log Claude daemon output (debugging) | off | Noisy debug logging. Turn on only if the Remote Control session never appears. |
 
 ---
@@ -160,6 +160,8 @@ Watch your usage at [claude.ai](https://claude.ai). Stop the add-on when you're 
 **Remote Control can't see entities** — Step 4. Check the log says `Writing HA MCP config`, and that the Vibecode Agent URL uses that add-on's actual hostname.
 
 **Assist replies but controls nothing** — Look for `HA MCP server reachable (HTTP 200)` in the add-on log. Anything else is printed as a loud multi-line error naming the cause. Then confirm the Model Context Protocol Server integration is installed and your entities are exposed.
+
+**The log says it is IGNORING your ha_mcp_token / ha_url** — Those two options are an escape hatch you almost certainly don't need, and yours point somewhere that doesn't answer. Assist is working anyway, via the default. Clear both fields to silence the warning. The usual cause is putting the Vibecode Agent's address (port 8099) into **Home Assistant URL** instead of **HA Vibecode Agent URL**.
 
 **"Sorry, the Claude add-on isn't responding"** — The integration can't reach the add-on. Check the add-on is running, then look in the HA log for a `Prompt API call failed:` line, which names the underlying cause.
 

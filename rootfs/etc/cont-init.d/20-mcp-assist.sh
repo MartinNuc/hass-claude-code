@@ -22,8 +22,10 @@ chmod 700 /data/.claude
 # API proxy is the documented path for an add-on with homeassistant_api: true,
 # it answers on this endpoint, and it needs no user configuration — so it is
 # the default.
-MCP_URL="http://supervisor/core/api/mcp/assist"
+PROXY_URL="http://supervisor/core/api/mcp/assist"
+MCP_URL="${PROXY_URL}"
 MCP_TOKEN="${SUPERVISOR_TOKEN}"
+USING_OVERRIDE="false"
 
 if bashio::config.has_value 'ha_mcp_token'; then
   # A long-lived token is minted by Core, not the Supervisor, so the proxy
@@ -37,23 +39,48 @@ if bashio::config.has_value 'ha_mcp_token'; then
   fi
   MCP_URL="${HA_URL%/}/api/mcp/assist"
   MCP_TOKEN="$(bashio::config 'ha_mcp_token')"
+  USING_OVERRIDE="true"
   bashio::log.info "Using the configured long-lived token against Core directly."
 else
   bashio::log.info "Using the Supervisor token via the Core API proxy."
 fi
 
-# Create the file at its final restrictive mode before any content lands in
-# it: `install -m 600` sets the mode at creation time, so there is no window
-# where the token sits behind default (umask-derived, typically world-
-# readable) permissions. `>` on an already-existing file preserves its mode
-# rather than reapplying the umask, so the jq write below never widens it.
-install -m 600 /dev/null /data/.claude/mcp-assist.json
-jq -n \
-  --arg url "${MCP_URL}" \
-  --arg auth "Bearer ${MCP_TOKEN}" \
-  '{mcpServers: {"ha-assist": {type: "http", url: $url, headers: {Authorization: $auth}}}}' \
-  > /data/.claude/mcp-assist.json
+# Write the MCP config for one (url, token) pair.
+#
+# `install -m 600` creates the file at its final restrictive mode before any
+# content lands in it, so the token never sits behind a default (umask-derived,
+# typically world-readable) mode even for an instant. `>` on an already-
+# existing file preserves that mode rather than reapplying the umask, so a
+# rewrite below never widens it.
+write_mcp_config() {
+  install -m 600 /dev/null /data/.claude/mcp-assist.json
+  jq -n \
+    --arg url "$1" \
+    --arg auth "Bearer $2" \
+    '{mcpServers: {"ha-assist": {type: "http", url: $url, headers: {Authorization: $auth}}}}' \
+    > /data/.claude/mcp-assist.json
+}
 
+# One MCP `initialize` handshake. Echoes the HTTP status, or 000 when curl
+# could not connect at all — the `||` keeps a failed curl or a non-2xx from
+# tripping `set -euo pipefail`, and --max-time stops a hung endpoint from
+# stalling container start.
+MCP_PROBE_BODY='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"claude-code-agent-init","version":"1"}}}'
+
+probe_mcp() {
+  local status
+  status="$(curl -s -o /dev/null -w '%{http_code}' \
+    --max-time 10 \
+    -X POST \
+    -H "Authorization: Bearer $2" \
+    -H "Content-Type: application/json" \
+    -H "Accept: application/json, text/event-stream" \
+    -d "${MCP_PROBE_BODY}" \
+    "$1" 2>/dev/null)" || status="000"
+  printf '%s' "${status}"
+}
+
+write_mcp_config "${MCP_URL}" "${MCP_TOKEN}"
 bashio::log.info "Assist MCP config written (${MCP_URL})."
 
 # ── Probe the MCP endpoint ───────────────────────────────────────────────────
@@ -65,23 +92,38 @@ bashio::log.info "Assist MCP config written (${MCP_URL})."
 # is_error false. Nothing anywhere reports it. /health only knows the Claude
 # version. So probe once at start and say so loudly in the log.
 #
-# This also gives the never-verified "HA accepts SUPERVISOR_TOKEN on this
-# endpoint" assumption a self-reporting failure mode instead of a silent one.
-#
 # Deliberately NOT fatal: the add-on must still come up so the user can read
-# this log and fix it. --max-time bounds a hung endpoint so it cannot stall
-# container start, and the `|| probe_status=...` keeps a curl failure or a
-# non-2xx from tripping `set -euo pipefail`.
-MCP_PROBE_BODY='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"claude-code-agent-init","version":"1"}}}'
+# this log and fix it.
+probe_status="$(probe_mcp "${MCP_URL}" "${MCP_TOKEN}")"
 
-probe_status="$(curl -s -o /dev/null -w '%{http_code}' \
-  --max-time 10 \
-  -X POST \
-  -H "Authorization: Bearer ${MCP_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -H "Accept: application/json, text/event-stream" \
-  -d "${MCP_PROBE_BODY}" \
-  "${MCP_URL}" 2>/dev/null)" || probe_status="000"
+# A broken override must not cost the user a working default. ha_url and
+# ha_mcp_token are easy to get wrong together — both this add-on's Vibecode
+# Agent URL and this one end in "URL", and pointing ha_url at the Vibecode
+# add-on (port 8099) produces a confident 404 from an add-on that was never
+# meant to serve /api/mcp/assist. So when an override fails and the default
+# proxy works, use the proxy and say loudly that the override was ignored.
+# Silently honouring configuration that demonstrably does not work leaves the
+# agent toolless; silently discarding it without saying so would be worse.
+if [[ "${probe_status}" != 2* && "${USING_OVERRIDE}" == "true" ]]; then
+  bashio::log.warning "Configured MCP endpoint failed (HTTP ${probe_status}); trying the Supervisor proxy..."
+  proxy_status="$(probe_mcp "${PROXY_URL}" "${SUPERVISOR_TOKEN}")"
+  if [[ "${proxy_status}" == 2* ]]; then
+    write_mcp_config "${PROXY_URL}" "${SUPERVISOR_TOKEN}"
+    bashio::log.warning "════════════════════════════════════════════════════"
+    bashio::log.warning "IGNORING your ha_mcp_token / ha_url settings."
+    bashio::log.warning "They point at ${MCP_URL}"
+    bashio::log.warning "which answered HTTP ${probe_status}, but the default"
+    bashio::log.warning "Supervisor proxy works — so the Assist agent is using"
+    bashio::log.warning "that instead and HAS its tools."
+    bashio::log.warning "Clear both options in the add-on configuration to"
+    bashio::log.warning "silence this. A common mix-up: ha_url is for Home"
+    bashio::log.warning "Assistant itself, NOT the HA Vibecode Agent add-on"
+    bashio::log.warning "(port 8099) — that one belongs in ha_agent_url."
+    bashio::log.warning "════════════════════════════════════════════════════"
+    MCP_URL="${PROXY_URL}"
+    probe_status="${proxy_status}"
+  fi
+fi
 
 if [[ "${probe_status}" == 2* ]]; then
   bashio::log.info "HA MCP server reachable (HTTP ${probe_status}) — the Assist agent has tools."
@@ -96,20 +138,19 @@ else
   fi
   bashio::log.error "The Assist conversation agent will start with NO tools:"
   bashio::log.error "it will chat, but it will not control anything."
-  bashio::log.error "The two likely causes:"
-  bashio::log.error "  1. The 'Model Context Protocol Server' integration is"
-  bashio::log.error "     not installed in Home Assistant. Add it under"
-  bashio::log.error "     Settings -> Devices & Services, keeping the default"
-  bashio::log.error "     Assist API."
-  bashio::log.error "  2. The token was rejected. By default the add-on uses"
-  bashio::log.error "     the Supervisor token against the Core API proxy. If"
-  bashio::log.error "     that is refused, create a long-lived access token"
-  bashio::log.error "     (Profile -> Security), set it as the add-on's"
-  bashio::log.error "     'ha_mcp_token' option and restart — that switches"
-  bashio::log.error "     this to talking to Core directly. Note the reverse"
-  bashio::log.error "     too: a long-lived token set here while Core is only"
-  bashio::log.error "     reachable via the proxy will fail, so clear the"
-  bashio::log.error "     option to go back to the default path."
+  if [[ "${USING_OVERRIDE}" == "true" ]]; then
+    bashio::log.error "You have ha_mcp_token set, so the add-on is talking to"
+    bashio::log.error "Home Assistant directly instead of using its default."
+    bashio::log.error "CLEAR ha_mcp_token AND ha_url in the add-on"
+    bashio::log.error "configuration — the default path needs no setup and"
+    bashio::log.error "works on most installs. Note ha_url means Home"
+    bashio::log.error "Assistant itself, not the HA Vibecode Agent add-on."
+  else
+    bashio::log.error "The likely cause: the 'Model Context Protocol Server'"
+    bashio::log.error "integration is not installed in Home Assistant. Add it"
+    bashio::log.error "under Settings -> Devices & Services, keeping the"
+    bashio::log.error "default Assist API."
+  fi
   bashio::log.error "The add-on is starting anyway so you can fix this."
   bashio::log.error "════════════════════════════════════════════════════"
 fi
