@@ -24,6 +24,18 @@ Telegram → Claude Code Channels MCP → long-running `claude` process (on HA h
 → HA MCP → Home Assistant. The messaging layer only carries the conversation;
 all files/tools/state stay on the host.
 
+### Second surface: Assist
+
+The add-on also serves a Home Assistant **conversation agent** for Assist. A
+custom integration (`custom_components/claude_code_conversation/`) runs inside
+HA Core and POSTs each turn to a prompt API in this container, which runs
+`claude -p` against Home Assistant's own MCP server. Model is configurable per
+agent. Design: `docs/superpowers/specs/2026-09-05-claude-assist-conversation-design.md`.
+
+The two surfaces share a container and credentials but nothing else: the Assist
+session runs with `--tools ""` and its own MCP config, so it cannot reach a
+shell or your config files.
+
 ---
 
 ## 2. ASSUMPTIONS — confirm or correct before building

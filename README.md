@@ -108,6 +108,52 @@ Your Telegram account is now the only one that can send messages to the agent. T
 
 ---
 
+## Using Claude with Assist
+
+The add-on also ships a Home Assistant integration that makes Claude available
+as an **Assist** conversation agent, so you can talk to it from the chat panel
+or a voice satellite.
+
+```
+Assist → conversation entity → add-on prompt API → claude -p → HA MCP server
+```
+
+### Setup
+
+1. In Home Assistant, add the **Model Context Protocol Server** integration
+   (Settings → Devices & Services → Add Integration). Keep the default
+   **Assist** API. This is how Claude controls your devices.
+2. Expose the entities you want Claude to reach under
+   **Settings → Voice assistants → Expose**. Claude sees nothing else.
+3. Start (or restart) this add-on. It copies the integration into your config
+   directory and logs "Restart Home Assistant".
+4. Restart Home Assistant.
+5. Add the **Claude Code Agent** integration. The connection details are
+   pre-filled — click Submit.
+6. On the integration page, choose **Add Claude agent**. Give it a name, pick a
+   model, and adjust the instructions if you like.
+7. Point an Assist pipeline at it under **Settings → Voice assistants**.
+
+### Choosing a model
+
+`haiku` answers fastest and is the sensible choice for a voice satellite.
+`sonnet` is the default and balances speed against capability. `opus` is worth
+it for complex requests where you will wait a few seconds. You can add several
+agents with different models and point different pipelines at them.
+
+### What the Assist agent can and cannot do
+
+The Assist agent runs with **every built-in tool disabled** — no shell, no file
+access, no web. Its entire capability is the Home Assistant MCP server, scoped
+to the entities you exposed to Assist. It is deliberately far more limited than
+the Remote Control session, which keeps full access.
+
+Turns are billed to your Claude subscription like any other usage, and a
+controlling request costs more than a question because Claude makes several
+tool calls to answer it.
+
+---
+
 ## Security
 
 **Secrets** — No secret (API key, bot token, OAuth token, HA access token) is baked into the Docker image or committed to the repository. All credentials are injected at runtime via add-on options or the persistent volume.
