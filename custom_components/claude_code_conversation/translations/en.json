@@ -54,6 +54,9 @@
     "cannot_connect": {
       "message": "Sorry, the Claude add-on isn't responding."
     },
+    "invalid_auth": {
+      "message": "Sorry, the Claude add-on rejected its access token. Reconnect the integration in Settings."
+    },
     "busy": {
       "message": "Sorry, Claude is busy right now. Try again in a moment."
     },

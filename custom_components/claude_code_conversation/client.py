@@ -34,6 +34,11 @@ class ConverseResult:
     text: str
     session_id: str
     is_error: bool
+    # What the turn actually cost. The add-on always reports these; they are
+    # optional here only so a partial body cannot raise. Real money: a trivial
+    # haiku turn has been measured at $0.051.
+    cost_usd: float | None = None
+    duration_ms: int | None = None
 
 
 class PromptApiClient:
@@ -100,4 +105,6 @@ class PromptApiClient:
             text=body.get("text") or "",
             session_id=body.get("session_id") or "",
             is_error=bool(body.get("is_error")),
+            cost_usd=body.get("cost_usd"),
+            duration_ms=body.get("duration_ms"),
         )

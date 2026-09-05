@@ -92,7 +92,11 @@ test("POST /conversation returns 400 for an oversized body instead of a connecti
   });
 });
 
-test("a stalled client that never finishes its body is disconnected within the body timeout", async () => {
+// The per-test timeout is the point: without it, a regression in the
+// body-timeout logic makes `npm test` hang forever instead of failing. The
+// injected bodyTimeoutMs is 200ms, so 5s is generous slack around a bound
+// that must exist at all.
+test("a stalled client that never finishes its body is disconnected within the body timeout", { timeout: 5000 }, async () => {
   await withServer({ runTurn: async () => ({}), bodyTimeoutMs: 200 }, async (base) => {
     const { port, hostname } = new URL(base);
     const socket = net.connect(Number(port), hostname);

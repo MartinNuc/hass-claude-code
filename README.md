@@ -126,20 +126,23 @@ Assist → conversation entity → add-on prompt API → claude -p → HA MCP se
 2. Expose the entities you want Claude to reach under
    **Settings → Voice assistants → Expose**. Claude sees nothing else.
 3. Start (or restart) this add-on. It copies the integration into your config
-   directory and logs "Restart Home Assistant".
+   directory and logs a warning asking you to restart Home Assistant.
 4. Restart Home Assistant.
 5. Add the **Claude Code Agent** integration. The connection details are
    pre-filled — click Submit.
-6. On the integration page, choose **Add Claude agent**. Give it a name, pick a
-   model, and adjust the instructions if you like.
+6. On the integration page, choose **Add a Claude agent**. Give it a name, pick
+   a model, and adjust the instructions if you like.
 7. Point an Assist pipeline at it under **Settings → Voice assistants**.
 
 ### Choosing a model
 
 `haiku` answers fastest and is the sensible choice for a voice satellite.
 `sonnet` is the default and balances speed against capability. `opus` is worth
-it for complex requests where you will wait a few seconds. You can add several
-agents with different models and point different pipelines at them.
+it for complex requests where you will wait a few seconds. `fable` is also
+offered. The model field accepts a custom value too, so you can type a pinned
+model id such as `claude-opus-5` instead of an alias — check the spelling, an
+id Claude Code does not recognise fails the turn. You can add several agents
+with different models and point different pipelines at them.
 
 ### What the Assist agent can and cannot do
 

@@ -1,5 +1,6 @@
 """Tests for the claude_code_conversation config flow."""
 
+import json
 from unittest.mock import patch
 
 from aioresponses import aioresponses
@@ -8,6 +9,7 @@ from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from custom_components.claude_code_conversation import config_flow
 from custom_components.claude_code_conversation.const import (
     CONF_BASE_URL,
     CONF_TOKEN,
@@ -203,3 +205,60 @@ async def test_conversation_subentry_reconfigure(
     assert result["type"] is FlowResultType.ABORT
     assert len(mock_config_entry.subentries) == 1
     assert mock_config_entry.subentries[subentry_id].data[CONF_MODEL] == "opus"
+
+
+# --- _read_addon_discovery -------------------------------------------------
+#
+# This is the one function whose input format is produced by a different
+# language in a different container: the `jq -n ... '{base_url: $url, token:
+# $token}'` call at the end of rootfs/etc/cont-init.d/30-deploy-integration.sh.
+# It is on the path every user walks on first install, so the cross-half
+# contract gets a real file rather than a mock. It must never raise - a broken
+# discovery file has to degrade to an empty form, not a crashed config flow.
+
+
+def _discovery_at(tmp_path, content: str | None):
+    """Point DISCOVERY_FILE at a temp file, optionally writing content."""
+    path = tmp_path / ".addon.json"
+    if content is not None:
+        path.write_text(content, encoding="utf-8")
+    return patch.object(config_flow, "DISCOVERY_FILE", path)
+
+
+def test_read_addon_discovery_reads_a_real_addon_json(tmp_path) -> None:
+    """The exact shape 30-deploy-integration.sh writes is parsed correctly."""
+    written_by_the_addon = json.dumps(
+        {"base_url": "http://abc123-claude-code-agent:8098", "token": "deadbeef"}
+    )
+    with _discovery_at(tmp_path, written_by_the_addon):
+        assert config_flow._read_addon_discovery() == {
+            CONF_BASE_URL: "http://abc123-claude-code-agent:8098",
+            CONF_TOKEN: "deadbeef",
+        }
+
+
+def test_read_addon_discovery_tolerates_malformed_json(tmp_path) -> None:
+    """A truncated or corrupt file yields {} rather than raising."""
+    with _discovery_at(tmp_path, '{"base_url": "http://addon:8098", "tok'):
+        assert config_flow._read_addon_discovery() == {}
+
+
+def test_read_addon_discovery_rejects_a_non_object_top_level(tmp_path) -> None:
+    """Valid JSON that is not an object yields {} rather than raising."""
+    with _discovery_at(tmp_path, '["http://addon:8098", "deadbeef"]'):
+        assert config_flow._read_addon_discovery() == {}
+
+
+def test_read_addon_discovery_tolerates_a_missing_file(tmp_path) -> None:
+    """No add-on installed (or not yet started) means no pre-fill, no error."""
+    with _discovery_at(tmp_path, None):
+        assert config_flow._read_addon_discovery() == {}
+
+
+def test_read_addon_discovery_tolerates_missing_keys(tmp_path) -> None:
+    """A file missing either key still yields both keys, as empty strings."""
+    with _discovery_at(tmp_path, '{"base_url": "http://addon:8098"}'):
+        assert config_flow._read_addon_discovery() == {
+            CONF_BASE_URL: "http://addon:8098",
+            CONF_TOKEN: "",
+        }

@@ -19,6 +19,22 @@ case "${FAKE_CLAUDE_MODE:-success}" in
   session_in_use)
     echo "Error: Session ID sess-1 is already in use." >&2
     exit 1 ;;
+  budget_exhausted)
+    # Verified against claude 2.1.261: exit 1, stderr EMPTY, and a complete
+    # result envelope on stdout whose `result` is null.
+    printf '%s\n' '{"type":"result","subtype":"error_max_budget_usd","is_error":true,"result":null,"session_id":"sess-1","duration_ms":2100,"total_cost_usd":0.5}'
+    exit 1 ;;
+  unrecognized_model)
+    # Verified against claude 2.1.261: exit 1, a valid envelope on stdout AND
+    # a one-line diagnostic on stderr that matches neither session-recovery
+    # regex.
+    printf '%s\n' '{"type":"result","subtype":"error_during_execution","is_error":true,"result":"Unrecognized model: bogus-model-xyz","session_id":"sess-1","duration_ms":30,"total_cost_usd":0}'
+    echo '[claude-code:unrecognized_model] {"model":"bogus-model-xyz"}' >&2
+    exit 1 ;;
+  hard_fail)
+    # Non-zero exit with nothing usable on stdout: still an error.
+    echo "something went very wrong" >&2
+    exit 1 ;;
   garbage)
     printf '%s\n' 'not json at all'
     exit 0 ;;

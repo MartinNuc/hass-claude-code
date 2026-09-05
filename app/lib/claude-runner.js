@@ -12,6 +12,25 @@ const { sessionIdFor, SessionTracker } = require("./session-map.js");
 const RESUME_MISSING_RE = /No conversation found with session ID/i;
 const SESSION_IN_USE_RE = /Session ID .* is already in use/i;
 
+function isResultEnvelope(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
+    && value.type === "result";
+}
+
+// The text to speak back. `result` is not always a usable string: on a budget
+// stop claude reports subtype "error_max_budget_usd" with `result: null`, and
+// answering an Assist turn with silence tells the user nothing. Synthesise a
+// short line carrying the subtype so they get something they can act on.
+function resultText(envelope) {
+  if (typeof envelope.result === "string" && envelope.result.trim()) {
+    return envelope.result;
+  }
+  if (envelope.is_error) {
+    return `Claude stopped: ${envelope.subtype || "unknown error"}`;
+  }
+  return "";
+}
+
 class ClaudeError extends Error {
   constructor(code, message) {
     super(message);
@@ -29,6 +48,14 @@ function buildArgs({ text, sessionId, model, systemPrompt, resume, mcpConfig, ma
     "--system-prompt", systemPrompt,
     // Record the prompt once per conversation and reuse it on resume: cheaper,
     // and keeps every turn of one conversation on identical instructions.
+    //
+    // Real consequence, per `claude --help`: an existing snapshot record is
+    // reused *verbatim* on resume. Home Assistant regenerates the system
+    // prompt every turn — it carries "Current time is ..." and the current
+    // exposed-entity list — but from turn 2 onward claude keeps turn 1's copy.
+    // Bounded by HA's ~5 minute conversation TTL (a new conversation_id means
+    // a new session and a fresh snapshot), so a stale clock or a just-exposed
+    // entity self-corrects within minutes. Acceptable, but not obvious.
     "--system-prompt-snapshot", "on",
     "--mcp-config", mcpConfig,
     "--strict-mcp-config",
@@ -87,22 +114,39 @@ function createRunner({
         if (settled) return;
         settled = true;
         clearTimeout(timer);
-        if (code !== 0) {
-          if (RESUME_MISSING_RE.test(stderr)) {
-            return reject(new ClaudeError("resume_missing", stderr.trim()));
-          }
-          if (SESSION_IN_USE_RE.test(stderr)) {
-            return reject(new ClaudeError("session_in_use", stderr.trim()));
-          }
-          return reject(new ClaudeError("failed", stderr.trim() || `claude exited ${code}`));
-        }
-        let envelope;
+
+        let envelope = null;
+        let parsed = false;
         try {
           envelope = JSON.parse(stdout);
-        } catch {
+          parsed = true;
+        } catch { /* not JSON — handled per exit code below */ }
+
+        if (code === 0) {
+          if (parsed) return resolve(envelope);
           return reject(new ClaudeError("failed", `unparseable claude output: ${stdout.slice(0, 200)}`));
         }
-        resolve(envelope);
+
+        // Non-zero exit. Session recovery is decided from stderr *first*: those
+        // two conditions are retryable with the opposite session flag, and a
+        // result envelope on stdout must not mask them.
+        if (RESUME_MISSING_RE.test(stderr)) {
+          return reject(new ClaudeError("resume_missing", stderr.trim()));
+        }
+        if (SESSION_IN_USE_RE.test(stderr)) {
+          return reject(new ClaudeError("session_in_use", stderr.trim()));
+        }
+
+        // Otherwise a well-formed result envelope on stdout is the most
+        // informative thing we have, and claude emits one on several non-zero
+        // exits: budget exhaustion (exit 1, *empty stderr*, subtype
+        // "error_max_budget_usd") and an unrecognized --model (exit 1, valid
+        // envelope, a one-line stderr diagnostic). Rejecting those turned an
+        // answerable failure into a 502 -> "the add-on isn't responding",
+        // which is both wrong and unactionable — the add-on is fine.
+        if (parsed && isResultEnvelope(envelope)) return resolve(envelope);
+
+        return reject(new ClaudeError("failed", stderr.trim() || `claude exited ${code}`));
       });
     });
   }
@@ -128,7 +172,7 @@ function createRunner({
 
     tracker.mark(sessionId);
     return {
-      text: typeof envelope.result === "string" ? envelope.result : "",
+      text: resultText(envelope),
       sessionId: envelope.session_id || sessionId,
       durationMs: envelope.duration_ms ?? null,
       costUsd: envelope.total_cost_usd ?? null,

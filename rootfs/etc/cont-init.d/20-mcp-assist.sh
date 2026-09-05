@@ -10,6 +10,11 @@ set -euo pipefail
 # surface. Neither inherits the other's tools.
 
 mkdir -p /data/assist-workspace
+# 10-setup.sh happens to create /data/.claude first today, but relying on the
+# ordering of a *different* script under `set -euo pipefail` means a future
+# renumber turns into a container-halting failure. Make it explicit.
+mkdir -p /data/.claude
+chmod 700 /data/.claude
 
 MCP_URL="http://homeassistant:8123/api/mcp/assist"
 MCP_TOKEN="${SUPERVISOR_TOKEN}"
@@ -34,3 +39,57 @@ jq -n \
   > /data/.claude/mcp-assist.json
 
 bashio::log.info "Assist MCP config written (${MCP_URL})."
+
+# ── Probe the MCP endpoint ───────────────────────────────────────────────────
+#
+# Without this, the single most likely real-world failure is silent: if the
+# user never installs Home Assistant's "Model Context Protocol Server"
+# integration, /api/mcp/assist 404s, `claude` starts with zero tools, and the
+# Assist agent answers conversationally ("I don't have access to...") with
+# is_error false. Nothing anywhere reports it. /health only knows the Claude
+# version. So probe once at start and say so loudly in the log.
+#
+# This also gives the never-verified "HA accepts SUPERVISOR_TOKEN on this
+# endpoint" assumption a self-reporting failure mode instead of a silent one.
+#
+# Deliberately NOT fatal: the add-on must still come up so the user can read
+# this log and fix it. --max-time bounds a hung endpoint so it cannot stall
+# container start, and the `|| probe_status=...` keeps a curl failure or a
+# non-2xx from tripping `set -euo pipefail`.
+MCP_PROBE_BODY='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"claude-code-agent-init","version":"1"}}}'
+
+probe_status="$(curl -s -o /dev/null -w '%{http_code}' \
+  --max-time 10 \
+  -X POST \
+  -H "Authorization: Bearer ${MCP_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d "${MCP_PROBE_BODY}" \
+  "${MCP_URL}" 2>/dev/null)" || probe_status="000"
+
+if [[ "${probe_status}" == 2* ]]; then
+  bashio::log.info "HA MCP server reachable (HTTP ${probe_status}) — the Assist agent has tools."
+else
+  bashio::log.error "════════════════════════════════════════════════════"
+  if [[ "${probe_status}" == "000" ]]; then
+    bashio::log.error "Could not reach the HA MCP server at ${MCP_URL}"
+    bashio::log.error "(connection failed or timed out)."
+  else
+    bashio::log.error "HA MCP server returned HTTP ${probe_status} for"
+    bashio::log.error "${MCP_URL}"
+  fi
+  bashio::log.error "The Assist conversation agent will start with NO tools:"
+  bashio::log.error "it will chat, but it will not control anything."
+  bashio::log.error "The two likely causes:"
+  bashio::log.error "  1. The 'Model Context Protocol Server' integration is"
+  bashio::log.error "     not installed in Home Assistant. Add it under"
+  bashio::log.error "     Settings -> Devices & Services, keeping the default"
+  bashio::log.error "     Assist API."
+  bashio::log.error "  2. The token was rejected. By default the add-on uses"
+  bashio::log.error "     the Supervisor token; if HA does not accept it here,"
+  bashio::log.error "     create a long-lived access token (Profile ->"
+  bashio::log.error "     Security), set it as the add-on's 'ha_mcp_token'"
+  bashio::log.error "     option, and restart the add-on."
+  bashio::log.error "The add-on is starting anyway so you can fix this."
+  bashio::log.error "════════════════════════════════════════════════════"
+fi

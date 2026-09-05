@@ -65,12 +65,22 @@ COPY rootfs /
 # Copy app scripts
 COPY app /app
 
+# In-container debugging guide for the Assist agent.
+#
+# Named CLAUDE.md at /root because that is the working directory of the Remote
+# Control `claude` session, so Claude Code auto-loads it as context. It has to
+# be baked into the image: the Supervisor clones this repository host-side and
+# only homeassistant_config and addon_config are mapped into the container, so
+# a doc that lives only in the repo is invisible to the session that needs it.
+COPY docs/ASSIST_DEBUGGING.md /root/CLAUDE.md
+
 # Custom integration deployed into the user's HA config by 30-deploy-integration.sh
 COPY custom_components /app/custom_components
 
 RUN chmod +x \
     /etc/cont-init.d/10-setup.sh \
     /etc/cont-init.d/20-mcp-assist.sh \
+    /etc/cont-init.d/25-prune-assist-sessions.sh \
     /etc/cont-init.d/30-deploy-integration.sh \
     /etc/services.d/claude/run \
     /etc/services.d/claude/finish \

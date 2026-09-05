@@ -11,6 +11,7 @@ from homeassistant.helpers.entity import Entity
 
 from . import ClaudeCodeConfigEntry
 from .client import (
+    PromptApiAuthError,
     PromptApiBusyError,
     PromptApiError,
     PromptApiTimeoutError,
@@ -68,6 +69,24 @@ class ClaudeCodeBaseEntity(Entity):
                 model=self.subentry.data[CONF_MODEL],
                 system_prompt=system_prompt,
             )
+        except PromptApiAuthError as err:
+            # Must come first: PromptApiAuthError subclasses PromptApiError, so
+            # without its own clause a runtime 401 falls into the generic
+            # handler below and the user hears "the add-on isn't responding"
+            # forever, while the reauth flow config_flow.py implements is never
+            # reached. Realistic trigger: the add-on is reinstalled or /data is
+            # wiped, so 30-deploy-integration.sh generates a fresh prompt API
+            # token while this config entry still holds the old one.
+            #
+            # ConfigEntryAuthFailed would be wrong here: config_entries only
+            # turns it into a reauth flow when it is raised during entry setup.
+            # From an entity's turn handler it is just another
+            # HomeAssistantError, so start the flow explicitly - the same thing
+            # HA core integrations do from entity code.
+            self.entry.async_start_reauth(self.hass)
+            raise HomeAssistantError(
+                translation_domain=DOMAIN, translation_key="invalid_auth"
+            ) from err
         except PromptApiBusyError as err:
             raise HomeAssistantError(
                 translation_domain=DOMAIN, translation_key="busy"
@@ -80,6 +99,16 @@ class ClaudeCodeBaseEntity(Entity):
             raise HomeAssistantError(
                 translation_domain=DOMAIN, translation_key="cannot_connect"
             ) from err
+
+        # Turns cost real money (a trivial haiku turn has been measured at
+        # $0.051) and nothing else in Home Assistant reports it, so at least
+        # make it discoverable by enabling debug logging for this integration.
+        LOGGER.debug(
+            "Claude turn finished: cost=%s USD, duration=%s ms, is_error=%s",
+            result.cost_usd,
+            result.duration_ms,
+            result.is_error,
+        )
 
         if result.is_error:
             # Claude reporting a problem is usually a useful answer in its own

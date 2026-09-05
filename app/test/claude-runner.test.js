@@ -178,6 +178,40 @@ test("runTurn's timeout kills the child's whole process group, including a grand
   assert.equal(isAlive(childPid), false, "grandchild (sleep) process should be killed");
 });
 
+// A non-zero exit code is not proof that there is nothing to say. The real
+// binary exits 1 while still printing a complete result envelope for at least
+// two user-reachable cases, and discarding it produced a 502 -> "the Claude
+// add-on isn't responding", blaming the add-on for something it did not do.
+test("runTurn surfaces the envelope when a budget stop exits non-zero", async () => {
+  const { runner } = runnerWith("budget_exhausted");
+  const out = await runner.runTurn({
+    text: "hi", conversationId: "c1", model: "sonnet", systemPrompt: "sp",
+  });
+  assert.equal(out.isError, true);
+  // `result` is null here, so the runner must synthesise something speakable
+  // rather than answering the Assist turn with silence.
+  assert.equal(out.text, "Claude stopped: error_max_budget_usd");
+  assert.equal(out.costUsd, 0.5);
+});
+
+test("runTurn surfaces the envelope when the model id is not recognized", async () => {
+  const { runner } = runnerWith("unrecognized_model");
+  const out = await runner.runTurn({
+    text: "hi", conversationId: "c1", model: "bogus-model-xyz", systemPrompt: "sp",
+  });
+  assert.equal(out.isError, true);
+  assert.equal(out.text, "Unrecognized model: bogus-model-xyz");
+});
+
+test("runTurn still throws when a non-zero exit leaves no usable envelope", async () => {
+  const { runner } = runnerWith("hard_fail");
+  await assert.rejects(
+    runner.runTurn({ text: "hi", conversationId: "c1", model: "sonnet", systemPrompt: "sp" }),
+    (err) => err instanceof ClaudeError && err.code === "failed"
+      && /something went very wrong/.test(err.message),
+  );
+});
+
 test("runTurn throws on unparseable output", async () => {
   const { runner } = runnerWith("garbage");
   await assert.rejects(
