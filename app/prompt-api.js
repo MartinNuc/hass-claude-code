@@ -22,10 +22,39 @@ function json(res, status, body) {
   res.end(payload);
 }
 
-function readBody(req, limitBytes = 1024 * 1024) {
+// How long we'll wait for a request body to finish arriving before giving up
+// on it. This endpoint is reachable only from the HA Core container over the
+// Supervisor network, so the threat model for a client that never finishes
+// sending is thin — but an unbounded hold (Node's own request-timeout default
+// is ~300s) still isn't something to ship: a stalled or slow-drip client
+// would otherwise sit on a connection for minutes. Chosen well under that
+// default and generous enough for any real Assist turn's body to arrive.
+const DEFAULT_BODY_TIMEOUT_MS = 20000;
+
+function readBody(req, { limitBytes = 1024 * 1024, timeoutMs = DEFAULT_BODY_TIMEOUT_MS } = {}) {
   return new Promise((resolve, reject) => {
     let raw = "";
     let overLimit = false;
+    let settled = false;
+
+    function settle(isResolve, value) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (isResolve) resolve(value); else reject(value);
+    }
+
+    const timer = setTimeout(() => {
+      // The body never finished arriving — a stalled connection, or a
+      // client deliberately trickling data to hold a slot open. Drop it
+      // rather than wait out Node's much longer built-in default.
+      req.socket.destroy();
+      settle(false, Object.assign(
+        new Error(`body did not finish within ${timeoutMs}ms`),
+        { code: "body_timeout" },
+      ));
+    }, timeoutMs);
+    if (typeof timer.unref === "function") timer.unref();
 
     req.on("data", (chunk) => {
       // Once over the limit, stop accumulating but keep draining and
@@ -34,7 +63,8 @@ function readBody(req, limitBytes = 1024 * 1024) {
       // client's remaining writes and can surface as a raw connection
       // error (e.g. EPIPE) instead of the documented 400. Waiting for
       // "end" below means we only ever respond once nothing is left to
-      // race against.
+      // race against — the timeout above is what bounds how long we'll
+      // wait for that "end" to come.
       if (overLimit) return;
       raw += chunk;
       if (raw.length > limitBytes) {
@@ -44,16 +74,18 @@ function readBody(req, limitBytes = 1024 * 1024) {
     });
     req.on("end", () => {
       if (overLimit) {
-        reject(Object.assign(new Error("payload too large"), { code: "payload_too_large" }));
+        settle(false, Object.assign(new Error("payload too large"), { code: "payload_too_large" }));
       } else {
-        resolve(raw);
+        settle(true, raw);
       }
     });
-    req.on("error", reject);
+    req.on("error", (err) => settle(false, err));
   });
 }
 
-function createApp({ runTurn, token, claudeVersion, maxConcurrent = 2 }) {
+function createApp({
+  runTurn, token, claudeVersion, maxConcurrent = 2, bodyTimeoutMs = DEFAULT_BODY_TIMEOUT_MS,
+}) {
   let inFlight = 0;
 
   return http.createServer(async (req, res) => {
@@ -80,10 +112,15 @@ function createApp({ runTurn, token, claudeVersion, maxConcurrent = 2 }) {
 
     let raw;
     try {
-      raw = await readBody(req);
+      raw = await readBody(req, { timeoutMs: bodyTimeoutMs });
     } catch (err) {
       if (err && err.code === "payload_too_large") {
         return json(res, 400, { error: "payload_too_large" });
+      }
+      if (err && err.code === "body_timeout") {
+        // The socket is already destroyed at this point — there's no one
+        // left to write a response to.
+        return;
       }
       return json(res, 400, { error: "invalid_json" });
     }

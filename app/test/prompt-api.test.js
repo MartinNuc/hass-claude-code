@@ -1,6 +1,7 @@
 "use strict";
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
+const net = require("node:net");
 const { createApp } = require("../prompt-api.js");
 const { ClaudeError } = require("../lib/claude-runner.js");
 
@@ -88,6 +89,40 @@ test("POST /conversation returns 400 for an oversized body instead of a connecti
     const res = await post(base, { ...GOOD, text: bigText });
     assert.equal(res.status, 400);
     assert.deepEqual(await res.json(), { error: "payload_too_large" });
+  });
+});
+
+test("a stalled client that never finishes its body is disconnected within the body timeout", async () => {
+  await withServer({ runTurn: async () => ({}), bodyTimeoutMs: 200 }, async (base) => {
+    const { port, hostname } = new URL(base);
+    const socket = net.connect(Number(port), hostname);
+    await new Promise((resolve, reject) => {
+      socket.once("connect", resolve);
+      socket.once("error", reject);
+    });
+
+    // Declare a body far bigger than we'll ever send, write just past the
+    // 1MB limit, then go silent — no more data, no end(). A well-behaved
+    // client never does this; this is the stalled/malicious case.
+    const partialBody = "x".repeat(1024 * 1024 + 1024);
+    const head =
+      "POST /conversation HTTP/1.1\r\n" +
+      `Host: ${hostname}\r\n` +
+      `Authorization: Bearer ${TOKEN}\r\n` +
+      "Content-Type: application/json\r\n" +
+      "Content-Length: 5000000\r\n" +
+      "\r\n";
+
+    const closed = new Promise((resolve) => socket.once("close", resolve));
+    socket.write(head + partialBody);
+
+    const start = Date.now();
+    await closed;
+    const elapsed = Date.now() - start;
+    // The injected 200ms bodyTimeoutMs bounds this; give generous slack so
+    // the assertion is about "didn't hang", not exact timer precision.
+    assert.ok(elapsed < 2000, `expected the stalled connection to close quickly, took ${elapsed}ms`);
+    socket.destroy();
   });
 });
 
