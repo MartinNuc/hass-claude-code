@@ -31,5 +31,5 @@ options:
 
 schema:
   ha_agent_url: str?
-  ha_agent_key: str
+  ha_agent_key: str?
   ha_mcp_token: str?
