@@ -83,19 +83,29 @@ class ClaudeCodeBaseEntity(Entity):
             # From an entity's turn handler it is just another
             # HomeAssistantError, so start the flow explicitly - the same thing
             # HA core integrations do from entity code.
+            LOGGER.error("Prompt API rejected our token: %s", err)
             self.entry.async_start_reauth(self.hass)
             raise HomeAssistantError(
                 translation_domain=DOMAIN, translation_key="invalid_auth"
             ) from err
         except PromptApiBusyError as err:
+            LOGGER.warning("Prompt API is at its concurrency cap: %s", err)
             raise HomeAssistantError(
                 translation_domain=DOMAIN, translation_key="busy"
             ) from err
         except PromptApiTimeoutError as err:
+            LOGGER.warning("Claude turn timed out: %s", err)
             raise HomeAssistantError(
                 translation_domain=DOMAIN, translation_key="timeout"
             ) from err
         except PromptApiError as err:
+            # The user-facing message is deliberately generic, so without this
+            # line the real cause - a DNS failure, a refused connection, an
+            # unexpected status - never reaches the log, and the turn fails
+            # with nothing anywhere to diagnose it from. Logged at error level
+            # rather than debug for that reason: by the time a user notices,
+            # the failing turn is already in the past.
+            LOGGER.error("Prompt API call failed: %s", err)
             raise HomeAssistantError(
                 translation_domain=DOMAIN, translation_key="cannot_connect"
             ) from err

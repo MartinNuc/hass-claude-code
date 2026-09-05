@@ -1,5 +1,5 @@
 name: "Claude Code Agent"
-version: "1.6.3"
+version: "1.7.0"
 slug: "claude-code-agent"
 description: "Headless Claude Code with Remote Control and an Assist conversation agent, connected to Home Assistant via MCP."
 url: "https://github.com/MartinNuc/hass-claude-code"
@@ -29,6 +29,7 @@ options:
   ha_agent_url: ""
   ha_agent_key: ""
   ha_mcp_token: ""
+  ha_url: ""
   debug_daemon_output: false
 
 schema:
@@ -36,4 +37,5 @@ schema:
   ha_agent_url: str?
   ha_agent_key: str?
   ha_mcp_token: str?
+  ha_url: str?
   debug_daemon_output: bool?

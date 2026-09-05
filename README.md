@@ -51,7 +51,8 @@ The add-on also exposes Claude as an **Assist conversation agent**, so you can t
 | `ha_agent_key` | No | — | API key from the [HA Vibecode Agent](https://github.com/Coolver/home-assistant-mcp) add-on Web UI. Leave blank if you do not run that add-on. |
 | `ha_agent_url` | No | `http://homeassistant:8099` | URL of the HA Vibecode Agent. The default works on HAOS. Change only if you run the agent on a non-standard port or host. |
 | `debug_daemon_output` | No | `false` | Logs the Remote Control session's terminal output to the add-on log. Noisy; turn it on only when a session will not appear. |
-| `ha_mcp_token` | No | — | Long-lived HA access token for Home Assistant's **own** MCP server, used by the Assist agent. Only needed if HA rejects the Supervisor token — see [Security](#security). |
+| `ha_mcp_token` | No | — | Long-lived HA access token for Home Assistant's **own** MCP server, used by the Assist agent. Leave blank unless the add-on log reports the Supervisor token was rejected — see [Security](#security). |
+| `ha_url` | No | `http://homeassistant:8123` | Where to reach Home Assistant directly. Used **only** when `ha_mcp_token` is set; otherwise the add-on goes through the Supervisor proxy and this is ignored. Set it if you serve HA on another port, e.g. `http://homeassistant:80`. |
 
 Leaving `ha_agent_key` blank is supported and does not stop the add-on. The init script logs a warning and writes an empty MCP config, so the **Remote Control session starts with no MCP tools** — Claude can still use its shell and file access, but it has no direct HA entity or service tools. The **Assist agent is unaffected**: it uses its own MCP config pointing at Home Assistant's built-in MCP server.
 
@@ -142,7 +143,7 @@ tool calls to answer it.
 
 **Assist agent scope** — The Assist surface is a separate `claude -p` process per turn, launched with `--tools ""` and `--strict-mcp-config`. It cannot run a shell, read files or reach the web; its whole capability is Home Assistant's own intent tools over the entities you exposed to Assist.
 
-**HA MCP token** — The Assist agent authenticates to Home Assistant's own MCP server with the Supervisor token the Supervisor injects into the add-on (`homeassistant_api: true` in the manifest). If HA rejects that token on the `/api/mcp/assist` endpoint, create a long-lived access token (Profile → Security) and set it as `ha_mcp_token`; it is used for that endpoint and nothing else. The add-on probes the endpoint once at startup and logs which token it used and whether it worked.
+**HA MCP token** — By default the Assist agent reaches Home Assistant's MCP server through the Supervisor's Core API proxy (`http://supervisor/core/api/mcp/assist`), authenticating with the Supervisor token the Supervisor injects into the add-on (`homeassistant_api: true` in the manifest). Nothing to configure. Reaching Core directly at `homeassistant:8123` is deliberately *not* the default: on a real HAOS install that name resolves to the Supervisor network gateway and the connection is refused, and the port is not 8123 on every install. If the proxy is ever refused, create a long-lived access token (Profile → Security), set it as `ha_mcp_token` and set `ha_url` to your HA address — that switches the agent to talking to Core directly. The token is used for that endpoint and nothing else. The add-on probes the endpoint once at startup and logs which path it used and whether it worked.
 
 **Git-backed HA config** — The add-on mounts your HA config directory read-write. Before making significant changes, ask Claude to commit a checkpoint so you can roll back with `git revert`.
 
@@ -186,6 +187,7 @@ The daemon has no credentials and is retrying every 60 seconds. Complete [Step 1
 - Check the startup log for the MCP probe. `HA MCP server reachable (HTTP 200)` means it has tools; anything else is printed as a loud multi-line error naming the cause.
 - Confirm the **Model Context Protocol Server** integration is installed in HA on the default Assist API.
 - Confirm the entities you expect are exposed under **Settings → Voice assistants → Expose**. Claude sees nothing else.
-- If the probe reports 401, the Supervisor token was rejected: create a long-lived access token in HA (Profile → Security → Long-Lived Access Tokens), set it as `ha_mcp_token`, and restart the add-on.
+- If the probe reports 401, the Supervisor token was rejected: create a long-lived access token in HA (Profile → Security → Long-Lived Access Tokens), set it as `ha_mcp_token`, set `ha_url` to your HA address (including the port you actually serve on), and restart the add-on.
+- If the probe reports a connection failure while `ha_mcp_token` is set, the direct address is wrong. Check `ha_url` against the port HA actually listens on, or clear `ha_mcp_token` to fall back to the Supervisor proxy, which needs no configuration.
 
 More detail, including the exact `curl` commands to test each hop, is in [`docs/ASSIST_DEBUGGING.md`](docs/ASSIST_DEBUGGING.md).

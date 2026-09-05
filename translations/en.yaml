@@ -21,9 +21,17 @@ configuration:
     name: Home Assistant MCP token
     description: >-
       Long-lived access token for Home Assistant's own MCP server, used by the
-      Assist conversation agent. Only needed if Home Assistant rejects the
-      Supervisor token — check the add-on log, which reports which token it
-      used and whether the connection worked.
+      Assist conversation agent. Leave blank unless the add-on log reports that
+      the Supervisor token was rejected. Setting it switches the Assist agent
+      from the Supervisor API proxy to talking to Home Assistant directly, at
+      the address below.
+  ha_url:
+    name: Home Assistant URL (advanced)
+    description: >-
+      Where to reach Home Assistant directly. Used only when an MCP token is
+      set above; otherwise the add-on goes through the Supervisor proxy and
+      this is ignored. Leave blank for http://homeassistant:8123 — set it if
+      you serve Home Assistant on a different port, e.g. http://homeassistant:80.
   debug_daemon_output:
     name: Log Claude daemon output (debugging)
     description: >-

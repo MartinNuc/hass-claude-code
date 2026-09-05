@@ -129,11 +129,18 @@ writes `{"mcpServers":{}}` — `claude-daemon.js` passes `--mcp-config`
 unconditionally and must never be pointed at a file that does not exist.
 
 **Assist** — `/data/.claude/mcp-assist.json`, written by `20-mcp-assist.sh`:
-an HTTP MCP server at `http://homeassistant:8123/api/mcp/assist`, authenticated
-with `SUPERVISOR_TOKEN` by default or with `ha_mcp_token` if set. The same
-script probes the endpoint once at start and reports the result in the log,
-because the failure mode is otherwise silent: no MCP server means the agent
-chats happily and controls nothing.
+an HTTP MCP server at `http://supervisor/core/api/mcp/assist`, authenticated
+with `SUPERVISOR_TOKEN`. This is the Supervisor's Core API proxy, and it is the
+default because reaching Core directly does not work: on a real HAOS install
+`homeassistant` resolves to the Supervisor network gateway and 8123 is refused
+outright, and the port is not 8123 on every install anyway. Setting
+`ha_mcp_token` switches to Core directly at `ha_url` (default
+`http://homeassistant:8123`) — a long-lived token is minted by Core, not the
+Supervisor, so the proxy will not honour it. The two travel together; changing
+one without the other breaks the pairing. The same script probes the endpoint
+once at start and reports the result in the log, because the failure mode is
+otherwise silent: no MCP server means the agent chats happily and controls
+nothing.
 
 Both files carry credentials and are created with `install -m 600 /dev/null`
 *before* any content is written, so there is no window at a umask-derived mode.
@@ -150,7 +157,8 @@ The complete set (`config.yaml`). Adding an option means touching `options:`,
 |---|---|---|---|
 | `ha_agent_url` | `str?` | `10-setup.sh` | falls back to `http://homeassistant:8099` |
 | `ha_agent_key` | `str` | `10-setup.sh` | warn; Remote Control session gets no MCP servers |
-| `ha_mcp_token` | `str?` | `20-mcp-assist.sh` | falls back to `SUPERVISOR_TOKEN` |
+| `ha_mcp_token` | `str?` | `20-mcp-assist.sh` | uses `SUPERVISOR_TOKEN` against the Supervisor Core proxy |
+| `ha_url` | `str?` | `20-mcp-assist.sh` | `http://homeassistant:8123`; read only when `ha_mcp_token` is set |
 
 Nothing else is configurable by the user. Tunables for the Assist path
 (`ASSIST_TIMEOUT_MS`, `ASSIST_MAX_BUDGET_USD`, `ASSIST_WORKSPACE`,

@@ -16,14 +16,30 @@ mkdir -p /data/assist-workspace
 mkdir -p /data/.claude
 chmod 700 /data/.claude
 
-MCP_URL="http://homeassistant:8123/api/mcp/assist"
+# Reaching Core directly at homeassistant:8123 does not work on a real HAOS
+# install: the name resolves to the Supervisor network gateway and the
+# connection is refused outright (curl exit 7, in 0 ms). The Supervisor's Core
+# API proxy is the documented path for an add-on with homeassistant_api: true,
+# it answers on this endpoint, and it needs no user configuration — so it is
+# the default.
+MCP_URL="http://supervisor/core/api/mcp/assist"
 MCP_TOKEN="${SUPERVISOR_TOKEN}"
 
 if bashio::config.has_value 'ha_mcp_token'; then
+  # A long-lived token is minted by Core, not the Supervisor, so the proxy
+  # will not honour it — that token only works against Core directly. Keep
+  # this path as the escape hatch for an install where the proxy is refused.
+  # 8123 is only the default port. A user serving Core on 80 (or anything
+  # else) needs ha_url, or this silently cannot connect.
+  HA_URL="http://homeassistant:8123"
+  if bashio::config.has_value 'ha_url'; then
+    HA_URL="$(bashio::config 'ha_url')"
+  fi
+  MCP_URL="${HA_URL%/}/api/mcp/assist"
   MCP_TOKEN="$(bashio::config 'ha_mcp_token')"
-  bashio::log.info "Using the configured long-lived token for the HA MCP server."
+  bashio::log.info "Using the configured long-lived token against Core directly."
 else
-  bashio::log.info "Using the Supervisor token for the HA MCP server."
+  bashio::log.info "Using the Supervisor token via the Core API proxy."
 fi
 
 # Create the file at its final restrictive mode before any content lands in
@@ -86,10 +102,14 @@ else
   bashio::log.error "     Settings -> Devices & Services, keeping the default"
   bashio::log.error "     Assist API."
   bashio::log.error "  2. The token was rejected. By default the add-on uses"
-  bashio::log.error "     the Supervisor token; if HA does not accept it here,"
-  bashio::log.error "     create a long-lived access token (Profile ->"
-  bashio::log.error "     Security), set it as the add-on's 'ha_mcp_token'"
-  bashio::log.error "     option, and restart the add-on."
+  bashio::log.error "     the Supervisor token against the Core API proxy. If"
+  bashio::log.error "     that is refused, create a long-lived access token"
+  bashio::log.error "     (Profile -> Security), set it as the add-on's"
+  bashio::log.error "     'ha_mcp_token' option and restart — that switches"
+  bashio::log.error "     this to talking to Core directly. Note the reverse"
+  bashio::log.error "     too: a long-lived token set here while Core is only"
+  bashio::log.error "     reachable via the proxy will fail, so clear the"
+  bashio::log.error "     option to go back to the default path."
   bashio::log.error "The add-on is starting anyway so you can fix this."
   bashio::log.error "════════════════════════════════════════════════════"
 fi
