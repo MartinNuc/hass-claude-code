@@ -1,6 +1,6 @@
 "use strict";
 // Wraps the claude process in a PTY so it detects a terminal and enters
-// interactive mode (required for --remote-control and --channels to work).
+// interactive mode (required for --remote-control to work).
 // Auto-answers first-run wizards (theme selection, workspace trust).
 
 const pty = require("node-pty");

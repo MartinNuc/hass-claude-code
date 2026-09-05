@@ -4,5 +4,5 @@ build_from:
 
 labels:
   org.opencontainers.image.title: "Claude Code Agent"
-  org.opencontainers.image.description: "Headless Claude Code with Telegram Channels and Remote Control"
+  org.opencontainers.image.description: "Headless Claude Code with Remote Control and an Assist conversation agent"
   org.opencontainers.image.source: "https://github.com/MartinNuc/hass-claude-code"

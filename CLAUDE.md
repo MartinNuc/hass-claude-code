@@ -1,4 +1,4 @@
-# CLAUDE.md — Home Assistant Add-on: "Claude Channels Agent"
+# CLAUDE.md — Home Assistant Add-on: "Claude Code Agent"
 
 This file orients any Claude Code session working in this repo. It is both the
 project memory and the build specification. Read it fully before editing.
@@ -7,195 +7,270 @@ project memory and the build specification. Read it fully before editing.
 
 ## 1. What we are building
 
-A **Home Assistant add-on** that runs a long-lived Claude Code session in the
-background on the HA host, driven over **Telegram via Claude Code Channels**
-(first-party, research-preview feature). The session has the **Home Assistant
-MCP** connected so the user can configure HA conversationally from their phone.
+A **Home Assistant add-on** that puts Claude Code on the HA host and exposes it
+through two surfaces:
+
+- **Remote Control** — one long-lived `claude` process, driven from
+  claude.ai/code or the Claude mobile app. Full tool surface: shell, files, and
+  whatever MCP servers are configured. This is the "configure my house
+  conversationally" session.
+- **Assist** — a Home Assistant conversation agent. A custom integration inside
+  HA Core POSTs each turn to a small HTTP API in this container, which runs one
+  `claude -p` against Home Assistant's own MCP server and exits.
 
 This is *not* a custom agent loop. We deliberately reuse:
-- **Claude Code Channels** for the Telegram bridge (no bot glue code of our own).
-- The **HA MCP server** the user already uses, connected via Claude Code's MCP config.
-- A **supervisor** (s6 inside the add-on, or `Restart=always`) to keep the
-  `claude --channels ...` process alive across crashes and host reboots, with
-  session `--resume` for continuity.
+- **Claude Code Remote Control** for the interactive surface (no bot glue of our own).
+- **MCP servers** for everything that touches Home Assistant.
+- **s6-overlay** (already in the HA base image) to supervise the processes and
+  restart them on crash, with `--continue` for session continuity.
 
 ### Mental model
-Telegram → Claude Code Channels MCP → long-running `claude` process (on HA host)
-→ HA MCP → Home Assistant. The messaging layer only carries the conversation;
-all files/tools/state stay on the host.
 
-### Second surface: Assist
+```
+claude.ai/code ──▶ claude (PTY, --remote-control) ──MCP──▶ Vibecode Agent add-on ──▶ HA
+Assist pipeline ─▶ prompt-api :8098 ─▶ claude -p ──MCP──▶ HA's own /api/mcp/assist
+```
 
-The add-on also serves a Home Assistant **conversation agent** for Assist. A
-custom integration (`custom_components/claude_code_conversation/`) runs inside
-HA Core and POSTs each turn to a prompt API in this container, which runs
-`claude -p` against Home Assistant's own MCP server. Model is configurable per
-agent. Design: `docs/superpowers/specs/2026-09-05-claude-assist-conversation-design.md`.
+The messaging layer only carries the conversation; all files, tools and state
+stay on the host.
 
-The two surfaces share a container and credentials but nothing else: the Assist
-session runs with `--tools ""` and its own MCP config, so it cannot reach a
-shell or your config files.
+The two surfaces share a container and one set of Claude credentials and
+**nothing else**. Separate MCP configs, separate tool policy, separate
+processes. The Assist session runs with `--tools ""` and `--strict-mcp-config`,
+so it cannot reach a shell or your config files. Do not "simplify" this by
+merging the two configs.
+
+Design notes for the Assist surface:
+`docs/superpowers/specs/2026-09-05-claude-assist-conversation-design.md`.
+In-container debugging guide: `docs/ASSIST_DEBUGGING.md` — this is baked into
+the image as `/root/CLAUDE.md`, so the Remote Control session auto-loads it. If
+you change how the Assist surface works, change that file too.
 
 ---
 
-## 2. ASSUMPTIONS — confirm or correct before building
+## 2. Settled decisions
 
-These were not finalized. Each is flagged inline where it affects code. If any
-is wrong, fix it here first and the rest of the spec follows.
+These were open questions once. They are decided; treat them as constraints,
+and if one has to change, change it here first.
 
-- **[ASSUMPTION: install_type = HA OS]** — Packaged as a true add-on (Docker
-  image under Supervisor). If install is **Container/Core**, a real add-on is
-  impossible: ship the same image as a plain `docker run`/compose sidecar and
-  ignore the `config.yaml`/Supervisor sections.
-- **[ASSUMPTION: auth = Anthropic API key]** — Credential injected as an add-on
-  secret/env var. If using a **Pro/Max subscription login**, the OAuth token
-  must be mounted from a persistent volume (interactive `claude login` cannot
-  run unattended inside the container — see §7).
-- **[ASSUMPTION]** Single trusted user; the user accepts running the agent with
-  reduced prompting in exchange for hands-off operation (see §6 on permissions).
+- **install_type = HA OS / Supervised.** Packaged as a true add-on (Docker
+  image under Supervisor). Container/Core installs cannot run add-ons and are
+  not supported.
+- **auth = Max/Pro subscription (OAuth).** There is no API-key path. Login is
+  interactive and happens once through the add-on's web terminal (see §8).
+- **Single trusted user.** No multi-tenancy, no per-user policy. The Remote
+  Control session is as privileged as the person holding the Claude account.
 
 ---
 
 ## 3. Hard requirements & non-negotiables
 
-1. **Channels needs Claude Code v2.1.80+.** Pin and verify at build and at start.
-2. Must launch with the `--channels` flag — installing the plugin is not enough.
-3. **Never bake secrets into the image.** API key / bot token / OAuth token come
-   from add-on options or mounted volumes at runtime only.
-4. **HA config must be under git.** Every change Claude makes is committable and
-   revertible. The add-on must not be the only copy of state.
-5. **Persist the Claude session + config across restarts** via a mounted volume
-   so `--resume` works after a reboot.
-6. Lock the Telegram bot to the user's own chat/user ID (allow-list).
+1. **Remote Control needs Claude Code v2.1.80+.** The Dockerfile verifies the
+   installed version at build time and fails the build below that.
+2. **Never bake secrets into the image.** OAuth token, HA tokens and the
+   Vibecode agent key come from add-on options or the persistent volume at
+   runtime only.
+3. **HA config should be under git.** Every change Claude makes is committable
+   and revertible. The add-on must not be the only copy of state.
+4. **Persist Claude's config and credentials across restarts.**
+   `CLAUDE_CONFIG_DIR=/data/.claude` lives on the add-on volume so `--continue`
+   works after a reboot.
+5. **A `cont-init.d` script that exits non-zero halts the whole container.**
+   Init must degrade, not die: a missing option gets a loud warning and a valid
+   fallback file, never a hard exit. `10-setup.sh` and `20-mcp-assist.sh` are
+   both written this way and say so in comments.
+6. **The two surfaces must not share tool surface.** See §5 and §7.
 
 ---
 
-## 4. Repository layout (target)
+## 4. Repository layout
 
 ```
-ha-claude-addon/
-  CLAUDE.md                # this file
-  README.md                # human-facing setup/usage
-  config.yaml              # HA add-on manifest  [HA OS / Supervised only]
-  Dockerfile               # builds the add-on image
-  rootfs/
-    etc/services.d/claude/ # s6 service: run + finish scripts (supervision)
-    etc/cont-init.d/        # one-time init: validate version, restore session
+hass-claude-code/
+  CLAUDE.md                  # this file
+  README.md                  # human-facing setup/usage
+  config.yaml                # HA add-on manifest (options, ingress, maps)
+  build.yaml                 # base images + OCI labels
+  repository.yaml            # add-on repository metadata
+  Dockerfile                 # builds the add-on image
+  rootfs/etc/
+    cont-init.d/
+      10-setup.sh            # settings + Remote Control MCP config
+      20-mcp-assist.sh       # Assist MCP config + endpoint probe
+      25-prune-assist-sessions.sh  # delete transcripts older than 14 days
+      30-deploy-integration.sh     # copy integration into HA config, write .addon.json
+    services.d/
+      claude/                # long-lived Remote Control session (execs app/start.sh)
+      ttyd/                  # web terminal on :7681, ingress (app/server.js)
+      prompt-api/            # Assist HTTP API on :8098 (app/prompt-api.js)
   app/
-    start.sh               # entrypoint: assemble flags, exec claude --channels
-    settings/
-      .claude/settings.json # tool scoping / permission policy (see §6)
-      .mcp.json             # HA MCP server definition (see §5)
-  docker-compose.yml       # [Container/Core fallback path only]
+    start.sh                 # credential gate, then exec claude-daemon.js
+    claude-daemon.js         # spawns claude in a PTY, answers first-run wizards
+    prompt-api.js            # HTTP front door for the Assist agent
+    server.js                # web terminal (xterm.js + node-pty over WebSocket)
+    lib/claude-runner.js     # builds and runs `claude -p` for one Assist turn
+    lib/session-map.js       # HA conversation_id → stable Claude session UUID
+    test/                    # node:test suites
+  custom_components/claude_code_conversation/   # the HA integration
+  tests/                     # pytest suites for the integration
+  docs/ASSIST_DEBUGGING.md   # baked into the image as /root/CLAUDE.md
+  docs/superpowers/          # historical plans and specs — do not edit
 ```
 
 ---
 
-## 5. Home Assistant MCP connection
+## 5. MCP wiring — two configs, deliberately
 
-- Reuse the user's existing HA MCP server config. Define it in `app/settings/.mcp.json`
-  and point Claude Code at it on launch.
-- HA MCP auth uses a **long-lived access token**, injected as a runtime secret —
-  never committed. Scope the token to the minimum the user is comfortable with.
-- On the **HA OS** path the add-on can reach core via the internal Supervisor
-  network (`http://supervisor/core` / `homeassistant:8123`); on the
-  **Container** path use the host-reachable HA URL. Flag which is in use.
+**Remote Control** — `/data/.claude/mcp.json`, written by `10-setup.sh`:
+`@coolver/home-assistant-mcp` launched via `npx`, pointed at the separate **HA
+Vibecode Agent** add-on with `HA_AGENT_URL` (default `http://homeassistant:8099`)
+and `HA_AGENT_KEY`. If `ha_agent_key` is blank the script warns loudly and
+writes `{"mcpServers":{}}` — `claude-daemon.js` passes `--mcp-config`
+unconditionally and must never be pointed at a file that does not exist.
 
----
+**Assist** — `/data/.claude/mcp-assist.json`, written by `20-mcp-assist.sh`:
+an HTTP MCP server at `http://homeassistant:8123/api/mcp/assist`, authenticated
+with `SUPERVISOR_TOKEN` by default or with `ha_mcp_token` if set. The same
+script probes the endpoint once at start and reports the result in the log,
+because the failure mode is otherwise silent: no MCP server means the agent
+chats happily and controls nothing.
 
-## 6. Permissions & autonomy — the central design tension
-
-Remote/unattended operation structurally pushes toward bypassing prompts: if
-Claude hits a permission prompt while the user is away, the session pauses until
-approved locally. Two supported modes — make this a single add-on option
-`autonomy_mode`:
-
-- **`gated` (default, recommended):** Run with a scoped `.claude/settings.json`
-  that **allow-lists safe tools** (HA reads, safe service calls, file reads,
-  git status/diff/commit) and **denies or requires confirmation** for
-  destructive ones (config overwrite, HA restart, `rm`, arbitrary bash).
-  Confirmations surface back through the Telegram channel.
-- **`auto`:** `--dangerously-skip-permissions`. Only valid because the add-on is
-  containerized, the HA token is scoped, and git enables rollback. Document the
-  blast radius loudly in README.
-
-Defense-in-depth regardless of mode: container isolation, scoped HA token,
-git-backed config, restricted `PATH`, allow-listed Telegram user.
+Both files carry credentials and are created with `install -m 600 /dev/null`
+*before* any content is written, so there is no window at a umask-derived mode.
+Same for `/data/prompt-api-token` and the deployed `.addon.json`.
 
 ---
 
-## 7. Authentication wiring
+## 6. Add-on options
 
-- **[API key path]** `ANTHROPIC_API_KEY` from add-on options → env at runtime.
-  Cleanest for unattended use; no interactive step.
-- **[Subscription path]** `claude login` is interactive and cannot run headless
-  in the container. Procedure: run login once on a machine with a browser, then
-  mount the resulting credential/OAuth token into the add-on's persistent volume
-  at the path Claude Code expects. `start.sh` must detect a missing/expired
-  token and fail loudly with instructions rather than hang.
-- Telegram bot token: from BotFather, stored as an add-on secret.
+The complete set (`config.yaml`). Adding an option means touching `options:`,
+`schema:`, the init script that reads it, and the README table.
 
----
+| Option | Schema | Used by | Effect when blank |
+|---|---|---|---|
+| `ha_agent_url` | `str?` | `10-setup.sh` | falls back to `http://homeassistant:8099` |
+| `ha_agent_key` | `str` | `10-setup.sh` | warn; Remote Control session gets no MCP servers |
+| `ha_mcp_token` | `str?` | `20-mcp-assist.sh` | falls back to `SUPERVISOR_TOKEN` |
 
-## 8. Supervision & lifecycle
-
-- Keep one `claude --channels ...` process resident. On exit/crash, restart with
-  exponential backoff and `--resume <session_id>` to preserve context.
-- Capture and persist `session_id` (from the session file / first run) to the
-  mounted volume so reboots resume the same conversation.
-- Add a health check: detect a hung/STUCK session (no progress, channel
-  unresponsive) and restart. A simple watchdog loop is enough; the TeleClaw
-  project is a reference for the DEAD/STUCK + dual-watchdog pattern if more
-  robustness is wanted later — do not copy wholesale, start minimal.
-- On HA OS, also set the add-on to restart on host reboot.
+Nothing else is configurable by the user. Tunables for the Assist path
+(`ASSIST_TIMEOUT_MS`, `ASSIST_MAX_BUDGET_USD`, `ASSIST_WORKSPACE`,
+`ASSIST_MCP_CONFIG`, `PROMPT_API_PORT`) are environment variables read by
+`lib/claude-runner.js` and `prompt-api.js`, intended for debugging.
 
 ---
 
-## 9. Cost & rate limits
+## 7. Permissions & autonomy
 
-Long-running async sessions consume Claude Code token quota continuously when
-active. Document expected burn; advise the user to watch plan rate limits.
-Consider an idle-timeout option that lets the session lapse after N minutes of
-inactivity and cold-resumes on the next Telegram message (trades warm latency
-for cost). Keep it OFF by default; the user explicitly wants a warm session.
+Unattended operation pushes toward bypassing prompts: if Claude hits a
+permission prompt while the user is away, the session pauses. The two surfaces
+resolve that tension differently, and that asymmetry is the whole design.
+
+- **Remote Control** runs `--permission-mode auto` — not
+  `--dangerously-skip-permissions`. Claude judges each action for itself and
+  raises a prompt only when it decides one is warranted; the user answers those
+  in the Remote Control interface, which is reachable from a phone. This surface
+  has a shell and read-write access to `/homeassistant`. Container isolation and
+  git-backed config are the real boundary, not the prompt.
+- **Assist** runs `--permission-mode bypassPermissions`, which is only safe
+  because there is nothing left to permit: `--tools ""` removes every built-in
+  tool, `--strict-mcp-config` limits MCP to the HA Assist server,
+  `--setting-sources ""` ignores on-disk settings and `--disable-slash-commands`
+  closes the last escape hatch. Capability is exactly HA's intent tools over
+  Assist-exposed entities. There is no deny-list to keep in sync as Claude Code
+  grows new tools — that is the point of the empty allow-list.
+
+A per-turn `--max-budget-usd` caps the cost of a runaway Assist turn.
 
 ---
 
-## 10. Security checklist (enforce in review)
+## 8. Authentication wiring
 
-- [ ] No secret in the image or git history (scan before first commit).
-- [ ] Telegram user/chat-ID allow-list active; reject all others.
-- [ ] HA token scoped; documented what it can and cannot do.
-- [ ] `autonomy_mode` default is `gated`; `auto` requires explicit opt-in.
+There is one path: the user's Claude Max/Pro subscription.
+
+- `claude auth login` is interactive and cannot run headless. The add-on serves
+  a web terminal (`app/server.js`, port 7681, exposed via HA ingress) purely so
+  the user can run it once. See README §First-run setup.
+- The result lands in `/data/.claude/.credentials.json` on the persistent
+  volume and survives restarts.
+- Both `app/start.sh` and `services.d/prompt-api/run` gate on that file: if it
+  is missing they log an instruction, `sleep 60` and `exit 1`, so s6 retries
+  them until the user has logged in. Fail loudly and retry — never hang.
+- No `ANTHROPIC_API_KEY` path exists. Do not add one without revisiting §2.
+
+---
+
+## 9. Supervision & lifecycle
+
+- `cont-init.d` runs once at container start, in numeric order: settings and
+  Remote Control MCP config, Assist MCP config and probe, transcript pruning,
+  integration deployment.
+- Three s6 services then run in parallel: `claude`, `ttyd`, `prompt-api`. Each
+  has a `finish` script that logs the exit code; s6 restarts them.
+- The Remote Control session is spawned through `node-pty` so `claude` sees a
+  TTY and enters interactive mode. `claude-daemon.js` also auto-answers the
+  first-run wizards (theme, workspace trust) by pattern-matching the collapsed,
+  ANSI-stripped TUI output, and suppresses that output from the log because it
+  is cursor-positioning noise.
+- Continuity comes from `--continue`, which resumes the most recent conversation
+  in the working directory. There is no session-id bookkeeping for this surface.
+- Assist continuity is different: `session-map.js` derives a stable UUIDv5 from
+  the HA `conversation_id`, so turn one uses `--session-id` and later turns
+  `--resume`, with a one-shot retry the other way if the in-memory tracker is
+  wrong. `25-prune-assist-sessions.sh` deletes transcripts older than 14 days.
+- On HA OS, `boot: auto` in the manifest restarts the add-on after a host reboot.
+
+---
+
+## 10. Cost & rate limits
+
+A long-running session consumes Claude Code token quota whenever it is active.
+Document expected burn; advise the user to watch plan rate limits. Assist turns
+bill on top of that, bounded per turn by `--max-budget-usd`.
+
+An idle-timeout option that lets the Remote Control session lapse after N
+minutes and cold-resumes on the next message would trade warm latency for cost.
+Not implemented, and it would stay OFF by default: the user explicitly wants a
+warm session.
+
+---
+
+## 11. Security checklist (enforce in review)
+
+- [ ] No secret in the image or git history.
+- [ ] Files holding a token are created at mode 600 *before* content is written.
+- [ ] HA tokens scoped; documented what they can and cannot do.
+- [ ] The Assist surface keeps `--tools ""` + `--strict-mcp-config`; no exceptions
+      "to make debugging easier".
 - [ ] HA config repo is git-backed with a known-good baseline commit.
 - [ ] CAPTCHA/2FA/login flows are never automated by the agent.
 - [ ] Container cannot write outside its intended config/volume paths.
+- [ ] No new add-on option is added without updating schema, init script and README.
 
 ---
 
-## 11. Build & test order (suggested)
+## 12. Tests
 
-1. Minimal image: Node + pinned Claude Code, prints version, exits. Verify ≥2.1.80.
-2. Wire API key (or mount OAuth token); confirm `claude -p "hello"` works in-container.
-3. Add `.mcp.json`; confirm HA MCP connects and a **read-only** HA query works.
-4. Add Channels plugin + `--channels`; confirm Telegram round-trip with a read-only ask.
-5. Add `.claude/settings.json` gating; confirm a write attempt prompts via Telegram.
-6. Add supervision + session persistence; kill the process and a reboot, confirm resume.
-7. Only then test a real `gated` config edit end-to-end, with git diff review.
-8. (Optional) flip to `auto` mode behind explicit opt-in and re-run §10 checklist.
+```
+cd app && npm test        # node:test — prompt API, claude runner, session map
+.venv/bin/pytest tests/ -q  # the claude_code_conversation integration
+```
+
+`app/test/fixtures/fake-claude` stands in for the real binary so the runner
+tests never spend tokens. Both suites run without a container.
 
 ---
 
-## 12. Out of scope (for now)
+## 13. Out of scope (for now)
 
 - Multi-user / multi-session management.
-- Voice / sub-second interaction loops.
-- Any custom agent loop or bot framework (Channels replaces this).
-- Exposing ports to the public internet (Telegram is the only ingress).
+- Any custom agent loop or bot framework.
+- Exposing ports to the public internet — the only ingress is HA's own, for the
+  web terminal.
+- An API-key authentication path.
 
 ---
 
 ## Notes for the working Claude session
 - Prefer small, reviewable commits; never leave HA config in a broken state.
 - When unsure whether an action is destructive, treat it as destructive.
-- Surface assumptions in §2 to the user before relying on them.
+- `docs/superpowers/**` records what was true when written. Do not update it.

@@ -1,18 +1,21 @@
 # Claude Code Agent — Home Assistant Add-on
 
-A Home Assistant add-on that runs a persistent [Claude Code](https://claude.ai/code) session on your HA host. You interact with it from Telegram; it configures Home Assistant on your behalf using the official HA MCP server. No custom agent code — just Claude Code with its first-party Telegram Channels feature and the HA MCP server wired together.
+A Home Assistant add-on that runs a persistent [Claude Code](https://claude.ai/code) session on your HA host. You drive it from claude.ai/code or the Claude mobile app through Claude Code's Remote Control feature, and it configures Home Assistant on your behalf over MCP. No custom agent code — just Claude Code and an MCP server wired together.
 
 ```
-Your phone (Telegram) → Claude Code Channels → claude process (on HA host) → HA MCP → Home Assistant
+claude.ai/code or Claude mobile app → Remote Control → claude process (on HA host) → MCP → Home Assistant
 ```
+
+The add-on also exposes Claude as an **Assist conversation agent**, so you can talk to it from the HA chat panel or a voice satellite. That is a separate, deliberately much more limited surface — see [Using Claude with Assist](#using-claude-with-assist).
 
 ---
 
 ## What this add-on does
 
-- Runs `claude --remote-control --channels plugin:telegram@claude-plugins-official` as a supervised daemon inside a Docker container on your HA host.
-- Connects Claude to Home Assistant via [hass-mcp](https://github.com/voicepilot/hass-mcp), automatically authenticated with the Supervisor token (no extra setup on HAOS).
-- Persists the Claude session and credentials across restarts so conversations resume after a reboot.
+- Runs `claude --permission-mode auto --remote-control "Home Assistant" --continue` as a supervised daemon inside a Docker container on your HA host.
+- Connects that session to Home Assistant via the [`@coolver/home-assistant-mcp`](https://github.com/Coolver/home-assistant-mcp) MCP server, which talks to the separate **HA Vibecode Agent** add-on using the `ha_agent_key` you configure. This part is optional; without a key the session simply starts with no HA tools.
+- Serves a second, sandboxed Claude session as an Assist conversation agent, scoped to the entities you expose to Assist.
+- Persists the Claude session and credentials on the add-on's own volume, so `--continue` picks the conversation back up after a restart or reboot.
 - Lets you ask Claude things like "turn off all lights in the living room", "create an automation that dims the bedroom at sunset", or "show me what automations changed last week".
 
 ---
@@ -22,9 +25,9 @@ Your phone (Telegram) → Claude Code Channels → claude process (on HA host) �
 | Requirement | Notes |
 |---|---|
 | Home Assistant OS or Supervised | A plain Container/Core install cannot run add-ons |
-| Claude Max or Pro subscription | The add-on authenticates via `claude login` (OAuth). An API key is not used. |
-| Telegram bot token | Create a bot with [@BotFather](https://t.me/BotFather) and copy the token |
+| Claude Max or Pro subscription | The add-on authenticates via `claude auth login` (OAuth). An API key is not used. |
 | Claude Code v2.1.80 or newer | Enforced at image build time; the Dockerfile will fail if the installer provides an older version |
+| HA Vibecode Agent add-on | Optional. Provides the MCP server the Remote Control session uses to reach Home Assistant. |
 
 ---
 
@@ -44,67 +47,37 @@ Your phone (Telegram) → Claude Code Channels → claude process (on HA host) �
 
 | Option | Required | Default | Description |
 |---|---|---|---|
-| `telegram_bot_token` | Yes | — | Token from [@BotFather](https://t.me/BotFather). The Telegram channel will not connect without this. |
-| `ha_agent_key` | Yes | — | API key from the [HA Vibecode Agent](https://github.com/Coolver/home-assistant-mcp) add-on Web UI. |
+| `ha_agent_key` | No | — | API key from the [HA Vibecode Agent](https://github.com/Coolver/home-assistant-mcp) add-on Web UI. Leave blank if you do not run that add-on. |
 | `ha_agent_url` | No | `http://homeassistant:8099` | URL of the HA Vibecode Agent. The default works on HAOS. Change only if you run the agent on a non-standard port or host. |
+| `ha_mcp_token` | No | — | Long-lived HA access token for Home Assistant's **own** MCP server, used by the Assist agent. Only needed if HA rejects the Supervisor token — see [Security](#security). |
 
-Set both `telegram_bot_token` and `ha_agent_key` before starting the add-on for the first time.
+Leaving `ha_agent_key` blank is supported and does not stop the add-on. The init script logs a warning and writes an empty MCP config, so the **Remote Control session starts with no MCP tools** — Claude can still use its shell and file access, but it has no direct HA entity or service tools. The **Assist agent is unaffected**: it uses its own MCP config pointing at Home Assistant's built-in MCP server.
 
 ---
 
 ## First-run setup
 
-The Telegram plugin must be installed once via Claude's Remote Control interface before Telegram messages will work. This is a one-time step.
-
 ### Step 1 — Authenticate with Claude
 
-Start the add-on. If no credentials exist, the init script runs `claude auth login` automatically and prints an authentication URL to the add-on log.
+Claude Code needs a one-time interactive login. The add-on ships a web terminal for exactly this.
 
-1. Open **Settings → Add-ons → Claude Code Agent → Log**.
-2. Find the line that contains a `https://claude.ai/...` URL.
-3. Open that URL in a browser and complete the sign-in.
-4. The add-on log will confirm "Login complete." and the daemon will start.
+1. Start the add-on. The log will show a banner saying Claude is not authenticated yet and that it will retry every 60 seconds.
+2. Open **Settings → Add-ons → Claude Code Agent → Web UI**. You get a shell inside the container.
+3. Run:
+   ```
+   claude auth login
+   ```
+4. Follow the browser flow it prints and complete the sign-in.
+5. Within a minute the daemon starts on its own — the log will show "Starting Claude Code daemon...".
 
 Credentials are saved to the persistent add-on volume (`/data/.claude/.credentials.json`) and survive restarts.
 
 ### Step 2 — Connect via Remote Control
 
-1. Go to [claude.ai/code](https://claude.ai/code) in a browser (same account you just logged into).
-2. Look for the **Remote Control** panel. Your add-on session should appear with a green dot indicating it is connected.
+1. Go to [claude.ai/code](https://claude.ai/code) in a browser, or open the Claude mobile app, signed in as the account you just logged in with.
+2. Look for the **Remote Control** panel. The session named **Home Assistant** should appear with a green dot indicating it is connected.
 
 If no session appears, confirm the add-on is running and check the log for errors.
-
-### Step 3 — Install the Telegram plugin
-
-In the Remote Control chat interface, run these two commands:
-
-```
-/plugin install telegram@claude-plugins-official
-```
-
-Wait for confirmation, then:
-
-```
-/reload-plugins
-```
-
-After the plugin installs, **restart the add-on** (Settings → Add-ons → Claude Code Agent → Restart). The daemon will now start with the Telegram channel active.
-
-### Step 4 — Pair your Telegram account
-
-1. Open Telegram and send any message to your bot (the one whose token you configured).
-2. The bot will reply with a pairing code.
-3. In the Remote Control interface, run:
-   ```
-   /telegram:access pair <code>
-   ```
-   Replace `<code>` with the code from your bot.
-4. Lock the bot to your account only:
-   ```
-   /telegram:access policy allowlist
-   ```
-
-Your Telegram account is now the only one that can send messages to the agent. Test it by sending a message like "what time is it?" to your bot.
 
 ---
 
@@ -159,23 +132,23 @@ tool calls to answer it.
 
 ## Security
 
-**Secrets** — No secret (API key, bot token, OAuth token, HA access token) is baked into the Docker image or committed to the repository. All credentials are injected at runtime via add-on options or the persistent volume.
-
-**Telegram allow-list** — After completing Step 4 above, the bot only accepts messages from your Telegram account. All other senders are silently ignored by the Channels plugin.
+**Secrets** — No secret (OAuth token, HA access token, agent key) is baked into the Docker image or committed to the repository. All credentials are injected at runtime via add-on options or the persistent volume.
 
 **Container isolation** — Claude runs inside a Docker container managed by the HA Supervisor. It cannot reach host system paths outside its mapped volumes.
 
-**HA token scope** — On HAOS the add-on uses the auto-injected Supervisor token, which is scoped to what the add-on declares in its manifest. If you supply your own `ha_token`, scope it to the minimum you need.
+**Permissions** — The Remote Control session runs with `--permission-mode auto`, not `--dangerously-skip-permissions`. In that mode Claude judges each action for itself and only raises a permission prompt when it decides one is warranted; those prompts surface in the Remote Control interface, where you answer them from claude.ai/code or the mobile app. Treat that as a convenience, not a containment boundary — the session has a shell and read-write access to your HA config directory. The real safety model is container isolation plus git rollback of your config.
+
+**Assist agent scope** — The Assist surface is a separate `claude -p` process per turn, launched with `--tools ""` and `--strict-mcp-config`. It cannot run a shell, read files or reach the web; its whole capability is Home Assistant's own intent tools over the entities you exposed to Assist.
+
+**HA MCP token** — The Assist agent authenticates to Home Assistant's own MCP server with the Supervisor token the Supervisor injects into the add-on (`homeassistant_api: true` in the manifest). If HA rejects that token on the `/api/mcp/assist` endpoint, create a long-lived access token (Profile → Security) and set it as `ha_mcp_token`; it is used for that endpoint and nothing else. The add-on probes the endpoint once at startup and logs which token it used and whether it worked.
 
 **Git-backed HA config** — The add-on mounts your HA config directory read-write. Before making significant changes, ask Claude to commit a checkpoint so you can roll back with `git revert`.
-
-**`--dangerously-skip-permissions`** — This flag is always on. It is intentional: the container boundary replaces the interactive permission prompts that are impractical in a headless daemon. The safety model is container isolation + scoped HA token + git rollback, not prompt-by-prompt approval. If you are not comfortable with this, do not install the add-on.
 
 ---
 
 ## Cost
 
-This add-on uses your Claude Max or Pro subscription. Token usage accumulates whenever the session is active and processing messages. The session stays warm (running) continuously, which means background keepalive activity also consumes quota.
+This add-on uses your Claude Max or Pro subscription. Token usage accumulates whenever the session is active and processing messages. The session stays warm (running) continuously, which means background keepalive activity also consumes quota. Assist turns are billed on top of that; each one runs under a `$0.50` per-turn budget cap.
 
 Monitor your usage at [claude.ai](https://claude.ai). If you notice high consumption, stop the add-on when not in use.
 
@@ -183,22 +156,9 @@ Monitor your usage at [claude.ai](https://claude.ai). If you notice high consump
 
 ## Troubleshooting
 
-**Add-on stops at startup with "No Claude credentials found" and no URL appears**
+**Add-on log repeats "Claude is not authenticated yet"**
 
-The `claude login` call failed before it could print a URL. Check that:
-- The container has outbound internet access.
-- The add-on log is scrolled to the top of the current startup — the URL may have appeared in a previous boot.
-
-Try restarting the add-on; it will attempt `claude login` again.
-
----
-
-**Telegram bot does not respond**
-
-- Confirm `telegram_bot_token` is set in the add-on configuration.
-- Confirm you completed Steps 3 and 4 (plugin install + restart + pairing).
-- Check the add-on log for lines mentioning "telegram" — common messages include "channel could not register" (plugin not installed) or "unauthorized sender" (pairing not done).
-- Verify the bot token is correct by sending a test request: `https://api.telegram.org/bot<YOUR_TOKEN>/getMe`
+The daemon has no credentials and is retrying every 60 seconds. Complete [Step 1](#step-1--authenticate-with-claude): open the add-on's **Web UI** tab and run `claude auth login` in the terminal. If `claude auth login` itself fails to print a URL, check that the container has outbound internet access, then try again.
 
 ---
 
@@ -206,13 +166,24 @@ Try restarting the add-on; it will attempt `claude login` again.
 
 - Confirm the add-on is running (not stopped or in a restart loop).
 - Check the log for `remote-control` errors.
-- Make sure you are signed into the same Claude account used during `claude login`.
-- The Remote Control feature requires Claude Code v2.1.80+; the build enforces this but a stale cached image might bypass the check. Rebuild the image.
+- Make sure you are signed into the same Claude account used during `claude auth login`.
+- Remote Control requires Claude Code v2.1.80+; the build enforces this but a stale cached image might bypass the check. Rebuild the image.
 
 ---
 
-**HA MCP not connecting / Claude cannot see HA entities**
+**The Remote Control session cannot see HA entities**
 
-- On HAOS the default URL (`http://supervisor/core`) should work automatically. If you changed `ha_url`, verify the URL is reachable from inside the container.
-- Check that `homeassistant_api: true` is present in the add-on manifest (it is, by default) — this is what causes the Supervisor to inject the token.
-- If you supplied a custom `ha_token`, verify it is a valid long-lived token in HA (Profile → Security → Long-Lived Access Tokens).
+- Confirm `ha_agent_key` is set. If it is blank, the log says so explicitly and the session starts with no MCP servers at all.
+- Confirm the **HA Vibecode Agent** add-on is installed and running, and that `ha_agent_url` points at it (default `http://homeassistant:8099`).
+- The startup log prints `Writing HA MCP config (agent URL: …)` when the config was written; its absence means the key was blank.
+
+---
+
+**The Assist agent replies but cannot control anything**
+
+- Check the startup log for the MCP probe. `HA MCP server reachable (HTTP 200)` means it has tools; anything else is printed as a loud multi-line error naming the cause.
+- Confirm the **Model Context Protocol Server** integration is installed in HA on the default Assist API.
+- Confirm the entities you expect are exposed under **Settings → Voice assistants → Expose**. Claude sees nothing else.
+- If the probe reports 401, the Supervisor token was rejected: create a long-lived access token in HA (Profile → Security → Long-Lived Access Tokens), set it as `ha_mcp_token`, and restart the add-on.
+
+More detail, including the exact `curl` commands to test each hop, is in [`docs/ASSIST_DEBUGGING.md`](docs/ASSIST_DEBUGGING.md).
