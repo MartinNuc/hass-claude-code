@@ -25,8 +25,11 @@ fi
 
 TOKEN_FILE="/data/prompt-api-token"
 if [[ ! -f "${TOKEN_FILE}" ]]; then
+  # install -m sets the mode at creation, before any content is written, so
+  # the token never sits behind a umask-derived (typically world-readable)
+  # mode even for an instant.
+  install -m 600 /dev/null "${TOKEN_FILE}"
   head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > "${TOKEN_FILE}"
-  chmod 600 "${TOKEN_FILE}"
   bashio::log.info "Generated a prompt API token."
 fi
 TOKEN="$(cat "${TOKEN_FILE}")"
@@ -49,9 +52,17 @@ fi
 
 # Always refresh discovery: the hostname is stable but the token may have just
 # been generated, and the config flow reads this file to pre-fill its form.
+#
+# ${DEST} lives on the shared homeassistant_config mount, not the add-on's
+# private /data volume — other installed add-ons commonly mount it too, and
+# it was just laid down world-readable by cp -r from the image. So the file
+# is created at 600 *before* the token is written into it (install -m sets
+# the mode at creation; > on an existing file preserves that mode rather than
+# reapplying the umask) — there must be no window where this ever sits
+# world-readable, even for one cont-init pass.
+install -m 600 /dev/null "${DEST}/.addon.json"
 jq -n \
   --arg url "http://$(hostname):8098" \
   --arg token "${TOKEN}" \
   '{base_url: $url, token: $token}' \
   > "${DEST}/.addon.json"
-chmod 600 "${DEST}/.addon.json"

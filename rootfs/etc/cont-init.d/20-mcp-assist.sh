@@ -21,11 +21,16 @@ else
   bashio::log.info "Using the Supervisor token for the HA MCP server."
 fi
 
+# Create the file at its final restrictive mode before any content lands in
+# it: `install -m 600` sets the mode at creation time, so there is no window
+# where the token sits behind default (umask-derived, typically world-
+# readable) permissions. `>` on an already-existing file preserves its mode
+# rather than reapplying the umask, so the jq write below never widens it.
+install -m 600 /dev/null /data/.claude/mcp-assist.json
 jq -n \
   --arg url "${MCP_URL}" \
   --arg auth "Bearer ${MCP_TOKEN}" \
   '{mcpServers: {"ha-assist": {type: "http", url: $url, headers: {Authorization: $auth}}}}' \
   > /data/.claude/mcp-assist.json
-chmod 600 /data/.claude/mcp-assist.json
 
 bashio::log.info "Assist MCP config written (${MCP_URL})."
