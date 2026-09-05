@@ -50,6 +50,7 @@ The add-on also exposes Claude as an **Assist conversation agent**, so you can t
 | `session_name` | No | `Home Assistant` | The name this instance shows in the Remote Control list at [claude.ai/code](https://claude.ai/code) and in the Claude mobile app. Change it if you run Claude Code on more than one machine. |
 | `ha_agent_key` | No | — | API key from the [HA Vibecode Agent](https://github.com/Coolver/home-assistant-mcp) add-on Web UI. Leave blank if you do not run that add-on. |
 | `ha_agent_url` | No | `http://homeassistant:8099` | URL of the HA Vibecode Agent. The default works on HAOS. Change only if you run the agent on a non-standard port or host. |
+| `debug_daemon_output` | No | `false` | Logs the Remote Control session's terminal output to the add-on log. Noisy; turn it on only when a session will not appear. |
 | `ha_mcp_token` | No | — | Long-lived HA access token for Home Assistant's **own** MCP server, used by the Assist agent. Only needed if HA rejects the Supervisor token — see [Security](#security). |
 
 Leaving `ha_agent_key` blank is supported and does not stop the add-on. The init script logs a warning and writes an empty MCP config, so the **Remote Control session starts with no MCP tools** — Claude can still use its shell and file access, but it has no direct HA entity or service tools. The **Assist agent is unaffected**: it uses its own MCP config pointing at Home Assistant's built-in MCP server.

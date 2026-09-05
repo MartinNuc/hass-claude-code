@@ -27,10 +27,19 @@ if bashio::config.has_value 'session_name'; then
 fi
 export SESSION_NAME
 
+# Off by default. Turn on when a Remote Control session will not appear: the
+# daemon otherwise discards the PTY output that would say what it is waiting on.
+if bashio::config.true 'debug_daemon_output'; then
+  export DEBUG_DAEMON_OUTPUT=1
+fi
+
 bashio::log.info "Starting Claude Code daemon..."
 bashio::log.info "  Remote Control: enabled — connect at claude.ai/code or Claude mobile app"
 bashio::log.info "  Session name: ${SESSION_NAME}"
 bashio::log.info "  Permission mode: auto"
+if bashio::config.true 'debug_daemon_output'; then
+  bashio::log.info "  Daemon output logging: ON (debug_daemon_output)"
+fi
 
 # Run claude via node-pty so it sees a TTY and enters interactive mode.
 exec 2>&1

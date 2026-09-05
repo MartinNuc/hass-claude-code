@@ -20,6 +20,36 @@ function buildArgs(env = process.env) {
   ];
 }
 
+// Claude's TUI renders via cursor-positioning escape codes so spaces between
+// words are absent after stripping ANSI. Match collapsed (no-whitespace) text.
+const stripAnsi = (s) => s.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "").replace(/\x1b./g, "");
+const collapse  = (s) => s.replace(/\s+/g, "");
+
+// Extra cleanup applied only to debug logging, never to the wizard-matching
+// buffer — OSC sequences and control bytes are noise in a log but harmless to
+// the plain-word patterns below, and leaving matching untouched keeps this
+// change behaviour-free for the normal path.
+// OSC must be removed BEFORE stripAnsi: its catch-all `\x1b.` rule would eat
+// the ESC-] opener and leave the title text behind as if it were content.
+const cleanForLog = (s) =>
+  stripAnsi(s.replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?/g, ""))
+    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, "");
+
+// Turns raw PTY output into readable lines, dropping blanks and consecutive
+// repeats — the TUI redraws the whole screen constantly, so without the dedupe
+// the log is unreadable.
+function debugLinesFrom(chunk, previousLine) {
+  const lines = [];
+  let last = previousLine;
+  for (const raw of cleanForLog(chunk).replace(/\r/g, "\n").split("\n")) {
+    const line = raw.trim();
+    if (!line || line === last) continue;
+    lines.push(line);
+    last = line;
+  }
+  return { lines, last };
+}
+
 function main() {
   // Required lazily: node-pty is a native module built inside the image, so a
   // top-level require would make this file unimportable — and the test suite
@@ -34,10 +64,12 @@ function main() {
     env:  { ...process.env, HOME: "/root" },
   });
 
-  // Claude's TUI renders via cursor-positioning escape codes so spaces between
-  // words are absent after stripping ANSI. Match collapsed (no-whitespace) text.
-  const stripAnsi = (s) => s.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "").replace(/\x1b./g, "");
-  const collapse  = (s) => s.replace(/\s+/g, "");
+  // Off by default: the TUI is redraw noise. Enabled by the
+  // `debug_daemon_output` add-on option when a session will not start, since
+  // suppressing this output is what makes a stuck wizard look like a healthy
+  // startup in the add-on log.
+  const debugOutput = Boolean(process.env.DEBUG_DAEMON_OUTPUT);
+  let lastDebugLine = "";
 
   let buf = "";
 
@@ -50,9 +82,11 @@ function main() {
   ];
 
   proc.onData((data) => {
-    // PTY output is Claude's interactive TUI — escape codes and cursor movements
-    // that are meaningless in plain text logs. Suppress it entirely.
-    // The session is controlled via Remote Control (claude.ai/code).
+    if (debugOutput) {
+      const { lines, last } = debugLinesFrom(data, lastDebugLine);
+      lastDebugLine = last;
+      for (const line of lines) console.log(`[claude] ${line}`);
+    }
 
     buf += collapse(stripAnsi(data));
     if (buf.length > 4000) buf = buf.slice(-2000);
@@ -70,4 +104,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { buildArgs, DEFAULT_SESSION_NAME };
+module.exports = { buildArgs, debugLinesFrom, DEFAULT_SESSION_NAME };

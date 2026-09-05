@@ -24,3 +24,10 @@ configuration:
       Assist conversation agent. Only needed if Home Assistant rejects the
       Supervisor token — check the add-on log, which reports which token it
       used and whether the connection worked.
+  debug_daemon_output:
+    name: Log Claude daemon output (debugging)
+    description: >-
+      Write the Remote Control session's terminal output to the add-on log.
+      Off by default, because it is noisy. Turn it on if the session never
+      appears at claude.ai/code — without it the log cannot show what the
+      session is waiting on.

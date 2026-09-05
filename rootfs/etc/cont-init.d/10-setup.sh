@@ -8,17 +8,53 @@ bashio::log.info "Claude Code Agent — running init..."
 mkdir -p /data/.claude/sessions
 chmod 700 /data/.claude /data/.claude/sessions
 
-# ── Default settings (skip first-run wizards) ────────────────────────────────
+# ── Default settings ─────────────────────────────────────────────────────────
 if [[ ! -f "/data/.claude/settings.json" ]]; then
   bashio::log.info "Creating default Claude settings..."
   jq -n '{
     theme: "dark",
     colorTheme: "dark",
     preferredTheme: "dark",
-    trustedDirectories: ["/root", "/"],
-    hasCompletedOnboarding: true
+    trustedDirectories: ["/root", "/"]
   }' > /data/.claude/settings.json
 fi
+
+# ── Skip the first-run wizards ───────────────────────────────────────────────
+# Onboarding state lives in .claude.json, NOT settings.json. Without this the
+# daemon starts, claude renders its theme picker, and it waits for a keypress
+# that never comes — and because claude-daemon.js suppresses PTY output, the
+# add-on log shows a perfectly healthy startup while nothing works.
+#
+# The file accumulates real state across restarts (userID, machineID,
+# numStartups), so merge into it rather than overwriting.
+export PATH="/root/.local/bin:${PATH}"
+CLAUDE_JSON="/data/.claude/.claude.json"
+CLAUDE_VERSION="$(claude --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
+
+SEED_FILE="$(mktemp)"
+jq -n --arg ver "${CLAUDE_VERSION}" '
+  {
+    hasCompletedOnboarding: true,
+    projects: { "/root": { hasTrustDialogAccepted: true, allowedTools: [] } }
+  }
+  + (if $ver == "" then {} else { lastOnboardingVersion: $ver } end)
+' > "${SEED_FILE}"
+
+if [[ -f "${CLAUDE_JSON}" ]] && jq -e . "${CLAUDE_JSON}" >/dev/null 2>&1; then
+  MERGED="$(mktemp)"
+  # `*` merges recursively with the right side winning, so other projects and
+  # unrelated top-level keys survive untouched.
+  jq -s '.[0] * .[1]' "${CLAUDE_JSON}" "${SEED_FILE}" > "${MERGED}"
+  mv "${MERGED}" "${CLAUDE_JSON}"
+  bashio::log.info "Onboarding state merged into .claude.json."
+else
+  if [[ -f "${CLAUDE_JSON}" ]]; then
+    bashio::log.warning ".claude.json was unreadable; replacing it."
+  fi
+  cp "${SEED_FILE}" "${CLAUDE_JSON}"
+  bashio::log.info "Onboarding state seeded (claude ${CLAUDE_VERSION:-unknown})."
+fi
+rm -f "${SEED_FILE}"
 
 # ── HA MCP config (@coolver/home-assistant-mcp via npx) ─────────────────────
 HA_AGENT_URL="http://homeassistant:8099"
