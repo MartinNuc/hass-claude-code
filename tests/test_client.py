@@ -35,6 +35,18 @@ def auto_enable_custom_integrations():
     return
 
 
+@pytest.fixture(autouse=True)
+def setup_homeassistant_integration():
+    """Shadow tests/conftest.py's hass-dependent `homeassistant` setup fixture.
+
+    See `auto_enable_custom_integrations` above for why this suite stays
+    hass-free; without this override pytest would still resolve the
+    same-named autouse fixture from tests/conftest.py, which depends on
+    `hass`.
+    """
+    return
+
+
 @pytest.fixture
 async def http_session():
     """A real aiohttp session for aioresponses to intercept requests from."""
