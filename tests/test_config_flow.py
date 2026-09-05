@@ -2,13 +2,11 @@
 
 from unittest.mock import patch
 
-import pytest
 from aioresponses import aioresponses
 
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
-from homeassistant.setup import async_setup_component
 
 from custom_components.claude_code_conversation.const import (
     CONF_BASE_URL,
@@ -18,20 +16,6 @@ from custom_components.claude_code_conversation.const import (
 
 HEALTH_URL = "http://addon:8098/health"
 USER_INPUT = {CONF_BASE_URL: "http://addon:8098", CONF_TOKEN: "secret"}
-
-
-@pytest.fixture(autouse=True)
-async def setup_homeassistant_integration(hass: HomeAssistant) -> None:
-    """Set up the base `homeassistant` domain.
-
-    Normal HA bootstrap always sets this up before any other integration.
-    The test `hass` fixture does not, so any flow that pulls in our
-    `conversation` dependency trips over `homeassistant.exposed_entities`
-    being unpopulated (`conversation`'s default agent records which of the
-    already-live entities are exposed as soon as it starts). Matches the
-    idiom HA core's own integration tests use.
-    """
-    assert await async_setup_component(hass, "homeassistant", {})
 
 
 async def test_user_flow_creates_entry(hass: HomeAssistant) -> None:
@@ -140,3 +124,82 @@ async def test_user_flow_prefills_from_addon_discovery(hass: HomeAssistant) -> N
     }
     assert defaults[CONF_BASE_URL] == "http://discovered:8098"
     assert defaults[CONF_TOKEN] == "found"
+
+
+async def test_conversation_subentry_creates_agent(
+    hass: HomeAssistant, mock_config_entry
+) -> None:
+    """Adding a conversation subentry stores model, prompt and the pinned API."""
+    from homeassistant.const import CONF_LLM_HASS_API, CONF_MODEL, CONF_PROMPT
+    from homeassistant.helpers import llm
+
+    from custom_components.claude_code_conversation.const import CONF_NAME
+
+    mock_config_entry.add_to_hass(hass)
+    with aioresponses() as mocked:
+        mocked.get(HEALTH_URL, payload={"ok": True, "claude_version": "2.1.99"})
+        assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    result = await hass.config_entries.subentries.async_init(
+        (mock_config_entry.entry_id, "conversation"),
+        context={"source": config_entries.SOURCE_USER},
+    )
+    assert result["type"] is FlowResultType.FORM
+
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        {CONF_NAME: "Voice", CONF_MODEL: "haiku", CONF_PROMPT: "Be brief."},
+    )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["title"] == "Voice"
+    assert result["data"] == {
+        CONF_NAME: "Voice",
+        CONF_MODEL: "haiku",
+        CONF_PROMPT: "Be brief.",
+        CONF_LLM_HASS_API: [llm.LLM_API_ASSIST],
+    }
+
+
+async def test_conversation_subentry_reconfigure(
+    hass: HomeAssistant, mock_config_entry
+) -> None:
+    """Reconfiguring an agent updates it in place rather than adding another."""
+    from homeassistant.const import CONF_MODEL, CONF_PROMPT
+
+    from custom_components.claude_code_conversation.const import CONF_NAME
+
+    mock_config_entry.add_to_hass(hass)
+    with aioresponses() as mocked:
+        mocked.get(HEALTH_URL, payload={"ok": True, "claude_version": "2.1.99"})
+        assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
+        await hass.async_block_till_done()
+
+        result = await hass.config_entries.subentries.async_init(
+            (mock_config_entry.entry_id, "conversation"),
+            context={"source": config_entries.SOURCE_USER},
+        )
+        await hass.config_entries.subentries.async_configure(
+            result["flow_id"],
+            {CONF_NAME: "Voice", CONF_MODEL: "haiku", CONF_PROMPT: "Be brief."},
+        )
+        await hass.async_block_till_done()
+
+        subentry_id = next(iter(mock_config_entry.subentries))
+        result = await hass.config_entries.subentries.async_init(
+            (mock_config_entry.entry_id, "conversation"),
+            context={
+                "source": config_entries.SOURCE_RECONFIGURE,
+                "subentry_id": subentry_id,
+            },
+        )
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"],
+            {CONF_NAME: "Voice", CONF_MODEL: "opus", CONF_PROMPT: "Be brief."},
+        )
+        await hass.async_block_till_done()
+
+    assert result["type"] is FlowResultType.ABORT
+    assert len(mock_config_entry.subentries) == 1
+    assert mock_config_entry.subentries[subentry_id].data[CONF_MODEL] == "opus"

@@ -27,6 +27,29 @@
       "reauth_successful": "Reconnected to the add-on."
     }
   },
+  "config_subentries": {
+    "conversation": {
+      "initiate_flow": {
+        "user": "Add a Claude agent",
+        "reconfigure": "Reconfigure this Claude agent"
+      },
+      "entry_type": "Conversation agent",
+      "step": {
+        "init": {
+          "title": "Claude conversation agent",
+          "data": {
+            "name": "Name",
+            "model": "Model",
+            "prompt": "Instructions"
+          },
+          "data_description": {
+            "model": "Faster models answer voice commands sooner; stronger models handle complex requests better.",
+            "prompt": "Instructions given to Claude at the start of every conversation."
+          }
+        }
+      }
+    }
+  },
   "exceptions": {
     "cannot_connect": {
       "message": "Sorry, the Claude add-on isn't responding."

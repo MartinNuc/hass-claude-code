@@ -9,11 +9,35 @@ from typing import Any
 
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import (
+    SOURCE_USER,
+    ConfigEntry,
+    ConfigFlow,
+    ConfigFlowResult,
+    ConfigSubentryFlow,
+    SubentryFlowResult,
+)
+from homeassistant.const import CONF_LLM_HASS_API, CONF_MODEL, CONF_PROMPT
+from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.selector import (
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
+    TemplateSelector,
+)
 
 from .client import PromptApiAuthError, PromptApiClient, PromptApiError
-from .const import CONF_BASE_URL, CONF_TOKEN, DOMAIN, LOGGER
+from .const import (
+    CONF_BASE_URL,
+    CONF_NAME,
+    CONF_TOKEN,
+    DOMAIN,
+    LOGGER,
+    MODELS,
+    RECOMMENDED_CONVERSATION_OPTIONS,
+    RECOMMENDED_MODEL,
+)
 
 # Written by the add-on's 30-deploy-integration.sh, beside this package. The
 # add-on knows its own Supervisor hostname; an integration inside HA Core
@@ -39,6 +63,14 @@ class ClaudeCodeConfigFlow(ConfigFlow, domain=DOMAIN):
     """Connect Home Assistant to the Claude Code Agent add-on."""
 
     VERSION = 1
+
+    @classmethod
+    @callback
+    def async_get_supported_subentry_types(
+        cls, config_entry: ConfigEntry
+    ) -> dict[str, type[ConfigSubentryFlow]]:
+        """Each conversation agent is a subentry of the add-on connection."""
+        return {"conversation": ConversationSubentryFlowHandler}
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -133,4 +165,84 @@ class ClaudeCodeConfigFlow(ConfigFlow, domain=DOMAIN):
                 }
             ),
             errors=errors,
+        )
+
+
+class ConversationSubentryFlowHandler(ConfigSubentryFlow):
+    """Create or reconfigure one Claude conversation agent."""
+
+    def __init__(self) -> None:
+        """Start with no options loaded."""
+        self.options: dict[str, Any] = {}
+
+    @property
+    def _is_new(self) -> bool:
+        """Return True when creating rather than reconfiguring."""
+        return self.source == SOURCE_USER
+
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Create a new agent."""
+        self.options = dict(RECOMMENDED_CONVERSATION_OPTIONS)
+        return await self.async_step_init(user_input)
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Reconfigure an existing agent."""
+        self.options = dict(self._get_reconfigure_subentry().data)
+        return await self.async_step_init(user_input)
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Collect the agent's name, model and system prompt."""
+        if user_input is not None:
+            data = {
+                **user_input,
+                CONF_LLM_HASS_API: RECOMMENDED_CONVERSATION_OPTIONS[CONF_LLM_HASS_API],
+            }
+            if self._is_new:
+                return self.async_create_entry(title=user_input[CONF_NAME], data=data)
+            return self.async_update_and_abort(
+                self._get_entry(),
+                self._get_reconfigure_subentry(),
+                title=user_input[CONF_NAME],
+                data=data,
+            )
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_NAME,
+                        description={
+                            "suggested_value": self.options.get(
+                                CONF_NAME, "Claude"
+                            )
+                        },
+                    ): str,
+                    vol.Required(
+                        CONF_MODEL,
+                        default=self.options.get(CONF_MODEL, RECOMMENDED_MODEL),
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=MODELS,
+                            mode=SelectSelectorMode.DROPDOWN,
+                            custom_value=True,
+                        )
+                    ),
+                    vol.Optional(
+                        CONF_PROMPT,
+                        description={
+                            "suggested_value": self.options.get(
+                                CONF_PROMPT,
+                                RECOMMENDED_CONVERSATION_OPTIONS[CONF_PROMPT],
+                            )
+                        },
+                    ): TemplateSelector(),
+                }
+            ),
         )
