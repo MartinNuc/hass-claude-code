@@ -1,4 +1,7 @@
 "use strict";
+
+const fs = require("node:fs");
+const path = require("node:path");
 // Wraps the claude process in a PTY so it detects a terminal and enters
 // interactive mode (required for --remote-control to work).
 // Auto-answers first-run wizards (theme selection, workspace trust).
@@ -7,7 +10,31 @@
 // Overridden by the `session_name` add-on option, which start.sh exports.
 const DEFAULT_SESSION_NAME = "Home Assistant";
 
-function buildArgs(env = process.env) {
+// Where the daemon runs, and where Claude keeps its conversation transcripts.
+const WORK_DIR = "/root";
+const CONFIG_DIR = process.env.CLAUDE_CONFIG_DIR || "/data/.claude";
+
+// Claude names a project directory after its cwd with slashes turned into
+// dashes: /root -> -root. Verified against a real run.
+function projectDirFor(cwd, configDir) {
+  return path.join(configDir, "projects", cwd.replace(/\//g, "-"));
+}
+
+// `claude --continue` is not a no-op when there is nothing to continue: it
+// prints "No conversation found to continue" and exits 1. Passing it
+// unconditionally crash-looped the daemon on every fresh install, so only ask
+// to continue once a transcript exists.
+function hasConversation(cwd = WORK_DIR, configDir = CONFIG_DIR) {
+  try {
+    return fs
+      .readdirSync(projectDirFor(cwd, configDir))
+      .some((entry) => entry.endsWith(".jsonl"));
+  } catch {
+    return false; // missing directory, or unreadable — treat as "start fresh"
+  }
+}
+
+function buildArgs(env = process.env, canContinue = true) {
   // The option can be cleared in the HA UI, and a blank label would leave the
   // session unidentifiable in the Remote Control list — so fall back instead.
   const sessionName = (env.SESSION_NAME || "").trim() || DEFAULT_SESSION_NAME;
@@ -15,7 +42,7 @@ function buildArgs(env = process.env) {
   return [
     "--permission-mode", "auto",
     "--remote-control", sessionName,
-    "--continue",
+    ...(canContinue ? ["--continue"] : []),
     "--mcp-config", "/data/.claude/mcp.json",
   ];
 }
@@ -51,12 +78,19 @@ function debugLinesFrom(chunk, previousLine) {
 }
 
 function main() {
+  const resuming = hasConversation();
+  console.log(
+    resuming
+      ? "[daemon] Continuing the previous conversation."
+      : "[daemon] No previous conversation; starting a fresh one."
+  );
+
   // Required lazily: node-pty is a native module built inside the image, so a
   // top-level require would make this file unimportable — and the test suite
   // deliberately runs with no npm install.
   const pty = require("node-pty");
 
-  const proc = pty.spawn("claude", buildArgs(), {
+  const proc = pty.spawn("claude", buildArgs(process.env, resuming), {
     name: "xterm-256color",
     cols: 220,
     rows: 50,
@@ -104,4 +138,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { buildArgs, debugLinesFrom, DEFAULT_SESSION_NAME };
+module.exports = { buildArgs, debugLinesFrom, hasConversation, projectDirFor, DEFAULT_SESSION_NAME };

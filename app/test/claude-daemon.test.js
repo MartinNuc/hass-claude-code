@@ -70,3 +70,56 @@ test("debug output removes OSC sequences and control bytes", () => {
   const { lines } = debugLinesFrom("\x1b]0;window title\x07Welcome\x00 to Claude", "");
   assert.deepEqual(lines, ["Welcome to Claude"]);
 });
+
+// ── --continue safety ───────────────────────────────────────────────────────
+// `claude --continue` with nothing to continue prints "No conversation found
+// to continue" and exits 1, which crash-looped the daemon on fresh installs.
+
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const { hasConversation, projectDirFor } = require("../claude-daemon.js");
+
+const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "cd-"));
+
+test("omits --continue when there is no conversation to continue", () => {
+  const args = buildArgs({}, false);
+  assert.ok(!args.includes("--continue"));
+  // everything else must survive the omission
+  assert.equal(args[args.indexOf("--mcp-config") + 1], "/data/.claude/mcp.json");
+  assert.equal(args[args.indexOf("--remote-control") + 1], "Home Assistant");
+});
+
+test("includes --continue by default", () => {
+  assert.ok(buildArgs({}).includes("--continue"));
+});
+
+test("project directory replaces slashes with dashes, as claude does", () => {
+  assert.equal(projectDirFor("/root", "/data/.claude"), "/data/.claude/projects/-root");
+});
+
+test("hasConversation is false when the project directory is missing", () => {
+  assert.equal(hasConversation("/root", path.join(tmp(), "nope")), false);
+});
+
+test("hasConversation is false when the directory exists but is empty", () => {
+  const cfg = tmp();
+  fs.mkdirSync(projectDirFor("/root", cfg), { recursive: true });
+  assert.equal(hasConversation("/root", cfg), false);
+});
+
+test("hasConversation ignores non-transcript files", () => {
+  const cfg = tmp();
+  const dir = projectDirFor("/root", cfg);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "notes.txt"), "");
+  assert.equal(hasConversation("/root", cfg), false);
+});
+
+test("hasConversation is true once a transcript exists", () => {
+  const cfg = tmp();
+  const dir = projectDirFor("/root", cfg);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "5a3d4696-2a28-4a66-b429-f5d6a512c59d.jsonl"), "");
+  assert.equal(hasConversation("/root", cfg), true);
+});
