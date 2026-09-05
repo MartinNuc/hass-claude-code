@@ -1,6 +1,6 @@
 configuration:
   session_name:
-    name: Remote Control session name
+    name: Claude Code Remote Control session name
     description: >-
       The name this Home Assistant shows in the Remote Control list at
       claude.ai/code and in the Claude mobile app. Useful if you run Claude

@@ -1,193 +1,166 @@
 # Claude Code Agent — Home Assistant Add-on
 
-A Home Assistant add-on that runs a persistent [Claude Code](https://claude.ai/code) session on your HA host. You drive it from claude.ai/code or the Claude mobile app through Claude Code's Remote Control feature, and it configures Home Assistant on your behalf over MCP. No custom agent code — just Claude Code and an MCP server wired together.
+Runs [Claude Code](https://claude.ai/code) on your Home Assistant host and gives you two ways to talk to it.
+
+**Remote Control** — a persistent Claude Code session you drive from [claude.ai/code](https://claude.ai/code) or the Claude mobile app. It has a shell, read-write access to your HA config, and Home Assistant tools over MCP. Ask it to write an automation, debug a template, restructure a dashboard, or explain what changed last week. This is the "configure my house by talking to it" surface, and it works from your phone.
+
+**Assist** — Claude as a Home Assistant conversation agent, so you can use it from the HA chat panel or a voice satellite. Deliberately far more limited: no shell, no files, no web. It can only reach the entities you explicitly expose to Assist.
 
 ```
-claude.ai/code or Claude mobile app → Remote Control → claude process (on HA host) → MCP → Home Assistant
+claude.ai/code or mobile app ──▶ Remote Control session ──▶ shell + files + HA tools
+HA chat panel or voice ────────▶ Assist agent ───────────▶ your exposed entities only
 ```
 
-The add-on also exposes Claude as an **Assist conversation agent**, so you can talk to it from the HA chat panel or a voice satellite. That is a separate, deliberately much more limited surface — see [Using Claude with Assist](#using-claude-with-assist).
+Both run in one container on your HA host, sharing one Claude login and nothing else.
 
 ---
 
-## What this add-on does
-
-- Runs `claude --permission-mode auto --remote-control "Home Assistant" --continue` as a supervised daemon inside a Docker container on your HA host.
-- Connects that session to Home Assistant via the [`@coolver/home-assistant-mcp`](https://github.com/Coolver/home-assistant-mcp) MCP server, which talks to the separate **HA Vibecode Agent** add-on using the `ha_agent_key` you configure. This part is optional; without a key the session simply starts with no HA tools.
-- Serves a second, sandboxed Claude session as an Assist conversation agent, scoped to the entities you expose to Assist.
-- Persists the Claude session and credentials on the add-on's own volume, so `--continue` picks the conversation back up after a restart or reboot.
-- Lets you ask Claude things like "turn off all lights in the living room", "create an automation that dims the bedroom at sunset", or "show me what automations changed last week".
-
----
-
-## Requirements
+## What you need
 
 | Requirement | Notes |
 |---|---|
-| Home Assistant OS or Supervised | A plain Container/Core install cannot run add-ons |
-| Claude Max or Pro subscription | The add-on authenticates via `claude auth login` (OAuth). An API key is not used. |
-| Claude Code v2.1.80 or newer | Enforced at image build time; the Dockerfile will fail if the installer provides an older version |
-| HA Vibecode Agent add-on | Optional. Provides the MCP server the Remote Control session uses to reach Home Assistant. |
+| Home Assistant OS or Supervised | A Container/Core install cannot run add-ons |
+| Claude Max or Pro subscription | You log in once, interactively. There is no API-key option. |
+| [HA Vibecode Agent](https://github.com/Coolver/home-assistant-mcp) add-on | Optional, but it's what gives the Remote Control session its Home Assistant tools |
 
 ---
 
-## Installation
+## Setup
 
-1. In Home Assistant, go to **Settings → Add-ons → Add-on Store**.
-2. Click the three-dot menu in the top-right and choose **Repositories**.
-3. Add the repository URL:
-   ```
-   https://github.com/MartinNuc/hass-claude-code
-   ```
-4. Find **Claude Code Agent** in the store and click **Install**.
+### Step 1 — Add this repository
 
----
+[![Open your Home Assistant instance and show the add add-on repository dialog with a specific repository URL pre-filled.](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FMartinNuc%2Fhass-claude-code)
 
-## Configuration
+Click the button above, then **Add**. Or do it by hand: **Settings → Add-ons → Add-on Store → ⋮ → Repositories**, paste `https://github.com/MartinNuc/hass-claude-code`.
 
-| Option | Required | Default | Description |
-|---|---|---|---|
-| `session_name` | No | `Home Assistant` | The name this instance shows in the Remote Control list at [claude.ai/code](https://claude.ai/code) and in the Claude mobile app. Change it if you run Claude Code on more than one machine. |
-| `ha_agent_key` | No | — | API key from the [HA Vibecode Agent](https://github.com/Coolver/home-assistant-mcp) add-on Web UI. Leave blank if you do not run that add-on. |
-| `ha_agent_url` | No | `http://homeassistant:8099` | URL of the HA Vibecode Agent. The default works on HAOS. Change only if you run the agent on a non-standard port or host. |
-| `debug_daemon_output` | No | `false` | Logs the Remote Control session's terminal output to the add-on log. Noisy; turn it on only when a session will not appear. |
-| `ha_mcp_token` | No | — | Long-lived HA access token for Home Assistant's **own** MCP server, used by the Assist agent. Leave blank unless the add-on log reports the Supervisor token was rejected — see [Security](#security). |
-| `ha_url` | No | `http://homeassistant:8123` | Where to reach Home Assistant directly. Used **only** when `ha_mcp_token` is set; otherwise the add-on goes through the Supervisor proxy and this is ignored. Set it if you serve HA on another port, e.g. `http://homeassistant:80`. |
+Find **Claude Code Agent** in the store, click **Install**, then **Start**.
 
-Leaving `ha_agent_key` blank is supported and does not stop the add-on. The init script logs a warning and writes an empty MCP config, so the **Remote Control session starts with no MCP tools** — Claude can still use its shell and file access, but it has no direct HA entity or service tools. The **Assist agent is unaffected**: it uses its own MCP config pointing at Home Assistant's built-in MCP server.
+### Step 2 — Log in to Claude
 
----
+Claude Code needs one interactive login. The add-on ships a web terminal for exactly this.
 
-## First-run setup
+1. Open the add-on's **Web UI** tab. You get a shell inside the container.
+2. Run `claude auth login` and follow the browser flow it prints.
+3. Within a minute the log shows `Starting Claude Code daemon...`.
 
-### Step 1 — Authenticate with Claude
+Your credentials are stored on the add-on's own volume and survive restarts and reboots. Until you do this, the log repeats "Claude is not authenticated yet" every 60 seconds — that's expected, not an error.
 
-Claude Code needs a one-time interactive login. The add-on ships a web terminal for exactly this.
+### Step 3 — Connect Remote Control
 
-1. Start the add-on. The log will show a banner saying Claude is not authenticated yet and that it will retry every 60 seconds.
-2. Open **Settings → Add-ons → Claude Code Agent → Web UI**. You get a shell inside the container.
-3. Run:
-   ```
-   claude auth login
-   ```
-4. Follow the browser flow it prints and complete the sign-in.
-5. Within a minute the daemon starts on its own — the log will show "Starting Claude Code daemon...".
+Open [claude.ai/code](https://claude.ai/code) or the Claude mobile app, signed in as the account you just used. A session named **Home Assistant** appears in the Remote Control list with a green dot.
 
-Credentials are saved to the persistent add-on volume (`/data/.claude/.credentials.json`) and survive restarts.
+That's Remote Control working. It can already use a shell and edit your config. To give it Home Assistant tools as well, continue to step 4.
 
-### Step 2 — Connect via Remote Control
+### Step 4 — Connect Home Assistant tools (optional)
 
-1. Go to [claude.ai/code](https://claude.ai/code) in a browser, or open the Claude mobile app, signed in as the account you just logged in with.
-2. Look for the **Remote Control** panel. The session named **Home Assistant** should appear with a green dot indicating it is connected.
+This is what lets the Remote Control session read entity states and deploy changes, rather than only editing YAML by hand.
 
-If no session appears, confirm the add-on is running and check the log for errors.
+**Install the HA Vibecode Agent add-on.** It's a separate add-on that exposes Home Assistant over MCP. Install and start it.
+
+**Get its key.** On the Vibecode Agent's page, open the **Web UI** and scroll to **Step 3: Copy Configuration**. You'll see a JSON block containing `HA_AGENT_KEY`. Copy just that key value — the long string in quotes, not the whole block.
+
+> Treat this key like a password. It grants control of your Home Assistant. Don't paste it into a chat, a screenshot, or a public repo. If it ever leaks, the same page has a **Regenerate Key** button.
+
+**Get its hostname.** Still on the Vibecode Agent add-on, go to the **Info** tab. In the right-hand column under Controls you'll find **Hostname** — something like `a22e6bb0-home-assistant-cursor-agent`. Copy it. The hash prefix is unique to your install, so it isn't guessable and there's no universal default.
+
+**Configure this add-on.** Open Claude Code Agent → **Configuration**:
+
+- **HA Vibecode Agent API key** → the key you copied
+- **HA Vibecode Agent URL** → `http://<the hostname you copied>:8099`
+
+Save, then **Restart** the add-on. The log should say `Writing HA MCP config (agent URL: …)`. If it warns that the key is blank instead, the save didn't take.
+
+Ask Claude something like *"what lights do I have?"* from claude.ai/code to confirm.
 
 ---
 
-## Using Claude with Assist
+## Setting up Assist
 
-The add-on also ships a Home Assistant integration that makes Claude available
-as an **Assist** conversation agent, so you can talk to it from the chat panel
-or a voice satellite.
+This gives you Claude in the Home Assistant chat panel and on voice satellites.
 
-```
-Assist → conversation entity → add-on prompt API → claude -p → HA MCP server
-```
+### Step 1 — Add HA's MCP Server integration
 
-### Setup
+**Settings → Devices & Services → Add Integration → Model Context Protocol Server.** Keep the default **Assist** API.
 
-1. In Home Assistant, add the **Model Context Protocol Server** integration
-   (Settings → Devices & Services → Add Integration). Keep the default
-   **Assist** API. This is how Claude controls your devices.
-2. Expose the entities you want Claude to reach under
-   **Settings → Voice assistants → Expose**. Claude sees nothing else.
-3. Start (or restart) this add-on. It copies the integration into your config
-   directory and logs a warning asking you to restart Home Assistant.
-4. Restart Home Assistant.
-5. Add the **Claude Code Agent** integration. The connection details are
-   pre-filled — click Submit.
-6. On the integration page, choose **Add a Claude agent**. Give it a name, pick
-   a model, and adjust the instructions if you like.
-7. Point an Assist pipeline at it under **Settings → Voice assistants**.
+This is how Claude actually controls your devices during an Assist conversation. Without it Claude will chat happily and control nothing.
 
-### Choosing a model
+### Step 2 — Expose the entities you want it to reach
 
-`haiku` answers fastest and is the sensible choice for a voice satellite.
-`sonnet` is the default and balances speed against capability. `opus` is worth
-it for complex requests where you will wait a few seconds. `fable` is also
-offered. The model field accepts a custom value too, so you can type a pinned
-model id such as `claude-opus-5` instead of an alias — check the spelling, an
-id Claude Code does not recognise fails the turn. You can add several agents
-with different models and point different pipelines at them.
+**Settings → Voice assistants → Expose.** Add your lights, switches, covers, whatever you want reachable.
 
-### What the Assist agent can and cannot do
+The Assist agent sees nothing outside this list. That, plus having no shell and no file access, is the whole security model — so this list is worth being deliberate about.
 
-The Assist agent runs with **every built-in tool disabled** — no shell, no file
-access, no web. Its entire capability is the Home Assistant MCP server, scoped
-to the entities you exposed to Assist. It is deliberately far more limited than
-the Remote Control session, which keeps full access.
+### Step 3 — Restart Home Assistant
 
-Turns are billed to your Claude subscription like any other usage, and a
-controlling request costs more than a question because Claude makes several
-tool calls to answer it.
+The add-on copies its integration into your config directory at startup, and Home Assistant only loads custom integrations at Core startup. **Settings → System → Restart**.
+
+### Step 4 — Add the integration
+
+**Settings → Devices & Services → Add Integration → Claude Code Agent.**
+
+The connection details are pre-filled from the add-on — just click **Submit**.
+
+### Step 5 — Create an agent
+
+On the integration's card, click **Add a Claude agent**:
+
+- **Name** — what you'll see in the pipeline picker
+- **Model** — `sonnet` is the default. Use `haiku` for voice, where speed matters more than depth. `opus` for complex requests you're willing to wait a few seconds for.
+- **Instructions** — an optional system prompt
+
+You can add several agents with different models and point different pipelines at each.
+
+### Step 6 — Point a pipeline at it
+
+**Settings → Voice assistants → Add assistant** (or edit an existing one) → set **Conversation agent** to the agent you just created.
+
+Talk to it from the Assist icon in the top-right of the sidebar. Try *"which lights are on?"*, then *"turn them off"*.
+
+---
+
+## Options reference
+
+| Option | Default | What it does |
+|---|---|---|
+| Claude Code Remote Control session name | `Home Assistant` | The name this instance shows at claude.ai/code. Change it if you run Claude Code on more than one machine. |
+| HA Vibecode Agent API key | — | From the Vibecode Agent Web UI, step 3. Blank means the Remote Control session starts with no Home Assistant tools. |
+| HA Vibecode Agent URL | `http://homeassistant:8099` | Use `http://<Vibecode hostname>:8099` from that add-on's Info tab. The default only works if that name resolves on your install. |
+| Home Assistant MCP token | — | Leave blank. Only needed if the log says the Supervisor token was rejected. |
+| Home Assistant URL (advanced) | `http://homeassistant:8123` | Ignored unless an MCP token is set. Set it if you serve HA on another port. |
+| Log Claude daemon output (debugging) | off | Noisy debug logging. Turn on only if the Remote Control session never appears. |
 
 ---
 
 ## Security
 
-**Secrets** — No secret (OAuth token, HA access token, agent key) is baked into the Docker image or committed to the repository. All credentials are injected at runtime via add-on options or the persistent volume.
+**The two surfaces are deliberately unequal.** Remote Control has a shell and read-write access to your HA config; the real boundary is container isolation plus git, not permission prompts. The Assist agent runs each turn as a separate process with every built-in tool disabled and MCP restricted to Home Assistant's intent tools — its entire capability is the entities you exposed.
 
-**Container isolation** — Claude runs inside a Docker container managed by the HA Supervisor. It cannot reach host system paths outside its mapped volumes.
+**Keep your HA config in git.** Every change Claude makes is then committable and revertible. Before any significant work, ask it to commit a checkpoint.
 
-**Permissions** — The Remote Control session runs with `--permission-mode auto`, not `--dangerously-skip-permissions`. In that mode Claude judges each action for itself and only raises a permission prompt when it decides one is warranted; those prompts surface in the Remote Control interface, where you answer them from claude.ai/code or the mobile app. Treat that as a convenience, not a containment boundary — the session has a shell and read-write access to your HA config directory. The real safety model is container isolation plus git rollback of your config.
+**No secrets are baked into the image or this repository.** Your Claude credentials, HA tokens and the Vibecode agent key exist only at runtime, in the add-on's private volume or its options.
 
-**Assist agent scope** — The Assist surface is a separate `claude -p` process per turn, launched with `--tools ""` and `--strict-mcp-config`. It cannot run a shell, read files or reach the web; its whole capability is Home Assistant's own intent tools over the entities you exposed to Assist.
-
-**HA MCP token** — By default the Assist agent reaches Home Assistant's MCP server through the Supervisor's Core API proxy (`http://supervisor/core/api/mcp/assist`), authenticating with the Supervisor token the Supervisor injects into the add-on (`homeassistant_api: true` in the manifest). Nothing to configure. Reaching Core directly at `homeassistant:8123` is deliberately *not* the default: on a real HAOS install that name resolves to the Supervisor network gateway and the connection is refused, and the port is not 8123 on every install. If the proxy is ever refused, create a long-lived access token (Profile → Security), set it as `ha_mcp_token` and set `ha_url` to your HA address — that switches the agent to talking to Core directly. The token is used for that endpoint and nothing else. The add-on probes the endpoint once at startup and logs which path it used and whether it worked.
-
-**Git-backed HA config** — The add-on mounts your HA config directory read-write. Before making significant changes, ask Claude to commit a checkpoint so you can roll back with `git revert`.
+**Nothing is exposed to the internet.** The only ingress is Home Assistant's own, for the web terminal.
 
 ---
 
 ## Cost
 
-This add-on uses your Claude Max or Pro subscription. Token usage accumulates whenever the session is active and processing messages. The session stays warm (running) continuously, which means background keepalive activity also consumes quota. Assist turns are billed on top of that; each one runs under a `$0.50` per-turn budget cap.
+Both surfaces bill against your Claude subscription. The Remote Control session consumes quota whenever it's active. Assist turns bill on top of that, capped at $0.50 per turn — a question is cheap, a request that controls devices costs more because Claude makes several tool calls to fulfil it.
 
-Monitor your usage at [claude.ai](https://claude.ai). If you notice high consumption, stop the add-on when not in use.
+Watch your usage at [claude.ai](https://claude.ai). Stop the add-on when you're not using it if consumption is a concern.
 
 ---
 
 ## Troubleshooting
 
-**Add-on log repeats "Claude is not authenticated yet"**
+**The log repeats "Claude is not authenticated yet"** — Step 2 isn't done. Open the Web UI and run `claude auth login`.
 
-The daemon has no credentials and is retrying every 60 seconds. Complete [Step 1](#step-1--authenticate-with-claude): open the add-on's **Web UI** tab and run `claude auth login` in the terminal. If `claude auth login` itself fails to print a URL, check that the container has outbound internet access, then try again.
+**No Remote Control session at claude.ai/code** — Confirm the add-on is running and you're signed into the same Claude account. If it's still missing, turn on **Log Claude daemon output** and restart; the log will then show what the session is waiting on.
 
----
+**Remote Control can't see entities** — Step 4. Check the log says `Writing HA MCP config`, and that the Vibecode Agent URL uses that add-on's actual hostname.
 
-**Remote Control session does not appear at claude.ai/code**
+**Assist replies but controls nothing** — Look for `HA MCP server reachable (HTTP 200)` in the add-on log. Anything else is printed as a loud multi-line error naming the cause. Then confirm the Model Context Protocol Server integration is installed and your entities are exposed.
 
-- Confirm the add-on is running (not stopped or in a restart loop).
-- Check the log for `remote-control` errors.
-- Make sure you are signed into the same Claude account used during `claude auth login`.
-- Remote Control requires Claude Code v2.1.80+; the build enforces this but a stale cached image might bypass the check. Rebuild the image.
-
----
-
-**The Remote Control session cannot see HA entities**
-
-- Confirm `ha_agent_key` is set. If it is blank, the log says so explicitly and the session starts with no MCP servers at all.
-- Confirm the **HA Vibecode Agent** add-on is installed and running, and that `ha_agent_url` points at it (default `http://homeassistant:8099`).
-- The startup log prints `Writing HA MCP config (agent URL: …)` when the config was written; its absence means the key was blank.
-
----
-
-**The Assist agent replies but cannot control anything**
-
-- Check the startup log for the MCP probe. `HA MCP server reachable (HTTP 200)` means it has tools; anything else is printed as a loud multi-line error naming the cause.
-- Confirm the **Model Context Protocol Server** integration is installed in HA on the default Assist API.
-- Confirm the entities you expect are exposed under **Settings → Voice assistants → Expose**. Claude sees nothing else.
-- If the probe reports 401, the Supervisor token was rejected: create a long-lived access token in HA (Profile → Security → Long-Lived Access Tokens), set it as `ha_mcp_token`, set `ha_url` to your HA address (including the port you actually serve on), and restart the add-on.
-- If the probe reports a connection failure while `ha_mcp_token` is set, the direct address is wrong. Check `ha_url` against the port HA actually listens on, or clear `ha_mcp_token` to fall back to the Supervisor proxy, which needs no configuration.
+**"Sorry, the Claude add-on isn't responding"** — The integration can't reach the add-on. Check the add-on is running, then look in the HA log for a `Prompt API call failed:` line, which names the underlying cause.
 
 More detail, including the exact `curl` commands to test each hop, is in [`docs/ASSIST_DEBUGGING.md`](docs/ASSIST_DEBUGGING.md).
