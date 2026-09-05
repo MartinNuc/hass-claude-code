@@ -20,6 +20,21 @@ CONVERSE_URL = f"{BASE_URL}/conversation"
 TOKEN = "secret"
 
 
+@pytest.fixture(autouse=True)
+def auto_enable_custom_integrations():
+    """Shadow tests/conftest.py's directory-wide, hass-dependent fixture.
+
+    This suite tests PromptApiClient in isolation against a real
+    aiohttp.ClientSession + aioresponses; it has no custom_components to
+    load and needs no HomeAssistant test instance. Without this override,
+    pytest would still resolve the same-named autouse fixture from
+    tests/conftest.py, which depends on `enable_custom_integrations`, which
+    depends on `hass` - reintroducing the exact HA-core coupling that
+    motivated pulling these tests out of test_init.py.
+    """
+    return
+
+
 @pytest.fixture
 async def http_session():
     """A real aiohttp session for aioresponses to intercept requests from."""
