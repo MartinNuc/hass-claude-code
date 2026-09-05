@@ -25,14 +25,30 @@ function json(res, status, body) {
 function readBody(req, limitBytes = 1024 * 1024) {
   return new Promise((resolve, reject) => {
     let raw = "";
+    let overLimit = false;
+
     req.on("data", (chunk) => {
+      // Once over the limit, stop accumulating but keep draining and
+      // discarding: settling (and responding) before the client has
+      // finished writing its body races the socket teardown against the
+      // client's remaining writes and can surface as a raw connection
+      // error (e.g. EPIPE) instead of the documented 400. Waiting for
+      // "end" below means we only ever respond once nothing is left to
+      // race against.
+      if (overLimit) return;
       raw += chunk;
       if (raw.length > limitBytes) {
-        reject(new Error("body too large"));
-        req.destroy();
+        overLimit = true;
+        raw = ""; // no longer needed; stop holding onto it
       }
     });
-    req.on("end", () => resolve(raw));
+    req.on("end", () => {
+      if (overLimit) {
+        reject(Object.assign(new Error("payload too large"), { code: "payload_too_large" }));
+      } else {
+        resolve(raw);
+      }
+    });
     req.on("error", reject);
   });
 }
@@ -62,9 +78,19 @@ function createApp({ runTurn, token, claudeVersion, maxConcurrent = 2 }) {
       return json(res, 200, { ok: true, claude_version: claudeVersion });
     }
 
+    let raw;
+    try {
+      raw = await readBody(req);
+    } catch (err) {
+      if (err && err.code === "payload_too_large") {
+        return json(res, 400, { error: "payload_too_large" });
+      }
+      return json(res, 400, { error: "invalid_json" });
+    }
+
     let body;
     try {
-      body = JSON.parse(await readBody(req));
+      body = JSON.parse(raw);
     } catch {
       return json(res, 400, { error: "invalid_json" });
     }

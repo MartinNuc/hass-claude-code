@@ -82,6 +82,15 @@ test("POST /conversation passes the request through to the runner", async () => 
   });
 });
 
+test("POST /conversation returns 400 for an oversized body instead of a connection error", async () => {
+  await withServer({ runTurn: async () => ({}) }, async (base) => {
+    const bigText = "x".repeat(2 * 1024 * 1024); // over the 1MB body limit
+    const res = await post(base, { ...GOOD, text: bigText });
+    assert.equal(res.status, 400);
+    assert.deepEqual(await res.json(), { error: "payload_too_large" });
+  });
+});
+
 test("POST /conversation maps a timeout to 504", async () => {
   const runTurn = async () => { throw new ClaudeError("timeout", "too slow"); };
   await withServer({ runTurn }, async (base) => {
