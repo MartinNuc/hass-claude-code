@@ -134,10 +134,11 @@ with `SUPERVISOR_TOKEN`. This is the Supervisor's Core API proxy, and it is the
 default because reaching Core directly does not work: on a real HAOS install
 `homeassistant` resolves to the Supervisor network gateway and 8123 is refused
 outright, and the port is not 8123 on every install anyway. Setting
-`ha_mcp_token` switches to Core directly at `ha_url` (default
-`http://homeassistant:8123`) — a long-lived token is minted by Core, not the
-Supervisor, so the proxy will not honour it. The two travel together; changing
-one without the other breaks the pairing. The same script probes the endpoint
+There is no override and no user configuration on this path — a
+`ha_mcp_token`/`ha_url` pair existed briefly and was removed: its only observed
+use was a user pointing it at the Vibecode Agent (port 8099), which 404s and
+cost them the agent's tools while the working default sat unused. Do not
+reintroduce it speculatively. The same script probes the endpoint
 once at start and reports the result in the log, because the failure mode is
 otherwise silent: no MCP server means the agent chats happily and controls
 nothing.
@@ -156,9 +157,12 @@ The complete set (`config.yaml`). Adding an option means touching `options:`,
 | Option | Schema | Used by | Effect when blank |
 |---|---|---|---|
 | `ha_agent_url` | `str?` | `10-setup.sh` | falls back to `http://homeassistant:8099` |
-| `ha_agent_key` | `str` | `10-setup.sh` | warn; Remote Control session gets no MCP servers |
-| `ha_mcp_token` | `str?` | `20-mcp-assist.sh` | uses `SUPERVISOR_TOKEN` against the Supervisor Core proxy |
-| `ha_url` | `str?` | `20-mcp-assist.sh` | `http://homeassistant:8123`; read only when `ha_mcp_token` is set |
+| `ha_agent_key` | `str?` | `10-setup.sh` | warn; Remote Control session gets no MCP servers |
+| `debug_daemon_output` | `bool?` | `app/start.sh` | off; PTY output stays out of the log |
+| `session_name` | `str?` | `app/start.sh` | falls back to `Home Assistant` |
+
+Four options total, and only `ha_agent_key` normally needs a value. Keep it
+that way: every option is a thing a user can get wrong.
 
 Nothing else is configurable by the user. Tunables for the Assist path
 (`ASSIST_TIMEOUT_MS`, `ASSIST_MAX_BUDGET_USD`, `ASSIST_WORKSPACE`,

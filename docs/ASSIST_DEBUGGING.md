@@ -207,17 +207,18 @@ logs how many it removed. Without it these accumulate forever on a finite
 ## 5. The HA MCP endpoint and its token
 
 `20-mcp-assist.sh` points the Assist agent at
-`http://homeassistant:8123/api/mcp/assist` and authenticates with
-`SUPERVISOR_TOKEN` by default. **Nobody confirmed that HA accepts the
-Supervisor token on that endpoint before release** — which is why the same
-script now probes it at start and reports the answer in the log rather than
-leaving it silent. If that probe (or §3 step 2) reports 401, that assumption
-was wrong. The fix does not need a code change:
+`http://supervisor/core/api/mcp/assist` — the Supervisor's Core API proxy —
+and authenticates with `SUPERVISOR_TOKEN`. Both are confirmed working on real
+HAOS hardware (HTTP 200). There is no configuration on this path and no
+override option; talking to Core directly was tried and removed, because
+`homeassistant` resolves to the Supervisor network gateway and refuses 8123,
+and the one time the override was used in practice it was pointed at the
+Vibecode Agent add-on and 404ed.
 
-1. In HA, create a long-lived access token (Profile → Security).
-2. Set it as the add-on's `ha_mcp_token` option.
-3. Restart the add-on. `20-mcp-assist.sh` prefers that option over the
-   Supervisor token and logs which one it used.
+If the probe reports 401 the Supervisor token was rejected, which would be new
+— and a code change, not a settings change. Confirm with the raw curl below
+before concluding that, since a 404 (missing MCP integration) is far more
+likely and reads similarly at a glance.
 
 Verify the raw endpoint directly before concluding anything:
 
