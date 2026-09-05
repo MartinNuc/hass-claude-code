@@ -23,5 +23,17 @@ case "${FAKE_CLAUDE_MODE:-success}" in
     printf '%s\n' 'not json at all'
     exit 0 ;;
   hang)
-    sleep 300 ;;
+    # Record our own pid, then background a real grandchild (a second
+    # process, forked by this shell) and record its pid too. This lets a
+    # test prove the runner's timeout kill reaches the whole process group
+    # -- not just this direct child -- by checking both pids are gone after.
+    if [ -n "$FAKE_CLAUDE_PID_FILE" ]; then
+      printf '%s\n' "$$" > "$FAKE_CLAUDE_PID_FILE"
+    fi
+    sleep 300 &
+    child_pid=$!
+    if [ -n "$FAKE_CLAUDE_CHILD_PID_FILE" ]; then
+      printf '%s\n' "$child_pid" > "$FAKE_CLAUDE_CHILD_PID_FILE"
+    fi
+    wait "$child_pid" ;;
 esac

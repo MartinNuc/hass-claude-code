@@ -118,6 +118,66 @@ test("runTurn throws a timeout error and does not hang", async () => {
   );
 });
 
+// Proves the timeout kill reaches the *whole process group*, not just that
+// runTurn's promise settles. The "hang" fixture forks a real grandchild
+// (a backgrounded `sleep`) and records both its own pid and the grandchild's
+// pid to files; after the timeout fires we assert both processes are
+// actually gone (process.kill(pid, 0) throws ESRCH), which would fail if the
+// process-group kill were deleted or `detached` were flipped to false and
+// only the direct child got orphaned/killed.
+function isAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    if (err.code === "ESRCH") return false;
+    throw err;
+  }
+}
+
+async function waitUntil(predicate, { timeoutMs = 2000, intervalMs = 20 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    if (predicate()) return;
+    if (Date.now() > deadline) throw new Error("waitUntil: timed out");
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+}
+
+test("runTurn's timeout kills the child's whole process group, including a grandchild", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fc-"));
+  const pidFile = path.join(dir, "pid");
+  const childPidFile = path.join(dir, "child-pid");
+  const runner = createRunner({
+    claudeBin: FAKE,
+    workspace: os.tmpdir(),
+    timeoutMs: 200,
+    env: {
+      FAKE_CLAUDE_MODE: "hang",
+      FAKE_CLAUDE_PID_FILE: pidFile,
+      FAKE_CLAUDE_CHILD_PID_FILE: childPidFile,
+    },
+  });
+
+  await assert.rejects(
+    runner.runTurn({ text: "hi", conversationId: "c1", model: "sonnet", systemPrompt: "sp" }),
+    (err) => err instanceof ClaudeError && err.code === "timeout",
+  );
+
+  // The pid files are written by the fixture within a few ms of spawn, well
+  // before the 200ms timeout fires, so they exist by the time we get here.
+  const pid = Number(fs.readFileSync(pidFile, "utf8").trim());
+  const childPid = Number(fs.readFileSync(childPidFile, "utf8").trim());
+  assert.ok(Number.isInteger(pid) && pid > 0);
+  assert.ok(Number.isInteger(childPid) && childPid > 0);
+
+  // SIGKILL delivery/reaping is async relative to our reject; poll briefly
+  // rather than asserting immediately.
+  await waitUntil(() => !isAlive(pid) && !isAlive(childPid));
+  assert.equal(isAlive(pid), false, "fake-claude process should be killed");
+  assert.equal(isAlive(childPid), false, "grandchild (sleep) process should be killed");
+});
+
 test("runTurn throws on unparseable output", async () => {
   const { runner } = runnerWith("garbage");
   await assert.rejects(
