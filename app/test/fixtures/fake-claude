@@ -1,0 +1,27 @@
+#!/bin/sh
+# Stand-in for the real claude binary. Behaviour is switched by env vars so a
+# single fixture covers every case the runner must handle.
+if [ -n "$FAKE_CLAUDE_ARGV_FILE" ]; then
+  : > "$FAKE_CLAUDE_ARGV_FILE"
+  for a in "$@"; do printf '%s\n' "$a" >> "$FAKE_CLAUDE_ARGV_FILE"; done
+fi
+
+case "${FAKE_CLAUDE_MODE:-success}" in
+  success)
+    printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"result":"Hello from Claude","session_id":"sess-1","duration_ms":123,"total_cost_usd":0.004}'
+    exit 0 ;;
+  error_result)
+    printf '%s\n' '{"type":"result","subtype":"error_during_execution","is_error":true,"result":"I cannot see that entity","session_id":"sess-1","duration_ms":50,"total_cost_usd":0.001}'
+    exit 0 ;;
+  resume_missing)
+    echo "No conversation found with session ID: sess-1" >&2
+    exit 1 ;;
+  session_in_use)
+    echo "Error: Session ID sess-1 is already in use." >&2
+    exit 1 ;;
+  garbage)
+    printf '%s\n' 'not json at all'
+    exit 0 ;;
+  hang)
+    sleep 300 ;;
+esac
