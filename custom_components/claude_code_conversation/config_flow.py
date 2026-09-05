@@ -32,6 +32,7 @@ from .const import (
     CONF_BASE_URL,
     CONF_NAME,
     CONF_TOKEN,
+    CONF_WEB_ACCESS,
     DOMAIN,
     LOGGER,
     MODELS,
@@ -243,6 +244,10 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
                             )
                         },
                     ): TemplateSelector(),
+                    vol.Required(
+                        CONF_WEB_ACCESS,
+                        default=self.options.get(CONF_WEB_ACCESS, False),
+                    ): bool,
                 }
             ),
         )

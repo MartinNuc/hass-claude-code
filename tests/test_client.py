@@ -130,8 +130,43 @@ async def test_async_converse_sends_expected_body_and_auth(
         "conversation_id": "conv-1",
         "model": "sonnet",
         "system_prompt": "be nice",
+        "web_access": False,
     }
     assert request.kwargs["headers"]["Authorization"] == f"Bearer {TOKEN}"
+
+
+async def test_async_converse_defaults_web_access_closed(
+    client: PromptApiClient,
+) -> None:
+    """A caller that omits web_access gets it off, not absent.
+
+    Absent would let the add-on apply its own default one day; sending False
+    explicitly keeps the decision on this side, where the user made it.
+    """
+    with aioresponses() as mocked:
+        mocked.post(
+            CONVERSE_URL,
+            payload={"text": "hi", "session_id": "s1", "is_error": False},
+        )
+        await client.async_converse("hello", "conv-1", "sonnet", "be nice")
+        request = mocked.requests[("POST", URL(CONVERSE_URL))][0]
+
+    assert request.kwargs["json"]["web_access"] is False
+
+
+async def test_async_converse_forwards_web_access(client: PromptApiClient) -> None:
+    """An agent with the toggle on sends it through."""
+    with aioresponses() as mocked:
+        mocked.post(
+            CONVERSE_URL,
+            payload={"text": "hi", "session_id": "s1", "is_error": False},
+        )
+        await client.async_converse(
+            "hello", "conv-1", "sonnet", "be nice", web_access=True
+        )
+        request = mocked.requests[("POST", URL(CONVERSE_URL))][0]
+
+    assert request.kwargs["json"]["web_access"] is True
 
 
 async def test_async_converse_raises_busy_error_on_503(client: PromptApiClient) -> None:

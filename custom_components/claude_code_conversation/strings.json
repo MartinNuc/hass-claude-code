@@ -40,11 +40,13 @@
           "data": {
             "name": "Name",
             "model": "Model",
-            "prompt": "Instructions"
+            "prompt": "Instructions",
+            "web_access": "Allow web search"
           },
           "data_description": {
             "model": "Faster models answer voice commands sooner; stronger models handle complex requests better.",
-            "prompt": "Instructions given to Claude at the start of every conversation."
+            "prompt": "Instructions given to Claude at the start of every conversation.",
+            "web_access": "Let this agent search and fetch the web. Off by default: it makes every turn slower and more expensive, and an Assist turn runs unattended for anyone who can talk to a voice satellite. It never grants shell or file access."
           }
         }
       }

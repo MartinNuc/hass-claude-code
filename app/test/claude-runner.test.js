@@ -37,14 +37,47 @@ test("buildArgs uses --resume for a later turn", () => {
   assert.ok(!args.includes("--session-id"));
 });
 
-test("buildArgs closes the tool surface", () => {
+test("buildArgs closes the tool surface by default", () => {
   const args = buildArgs({
     text: "hi", sessionId: "s1", model: "sonnet", systemPrompt: "sp", resume: false,
   });
   assert.equal(args[args.indexOf("--tools") + 1], "");
-  assert.ok(args.includes("--strict-mcp-config"));
   assert.equal(args[args.indexOf("--model") + 1], "sonnet");
   assert.equal(args[args.indexOf("--system-prompt") + 1], "sp");
+});
+
+test("buildArgs omits --strict-mcp-config so user-registered MCP servers load", () => {
+  // Deliberate, not an oversight: that flag is exactly what excludes servers
+  // added with `claude mcp add --scope user`, which is how a user extends the
+  // Assist agent from the add-on's web terminal.
+  const args = buildArgs({
+    text: "hi", sessionId: "s1", model: "sonnet", systemPrompt: "sp", resume: false,
+  });
+  assert.ok(!args.includes("--strict-mcp-config"));
+  assert.ok(args.includes("--mcp-config"));
+});
+
+test("buildArgs opens web tools only when the agent asks for them", () => {
+  const on = buildArgs({
+    text: "hi", sessionId: "s1", model: "sonnet", systemPrompt: "sp", resume: false,
+    webAccess: true,
+  });
+  assert.equal(on[on.indexOf("--tools") + 1], "WebSearch,WebFetch");
+});
+
+test("buildArgs never admits a code-running tool, whatever it is handed", () => {
+  // The tool list is a hardcoded constant precisely so that a bad value
+  // upstream cannot widen the surface. Everything here runs unattended at the
+  // request of anyone who can speak to a voice satellite, so a Bash that
+  // slipped through would be remote code execution by speech.
+  for (const webAccess of [true, false, "Bash", "default", 1, {}, ["Bash"]]) {
+    const args = buildArgs({
+      text: "hi", sessionId: "s1", model: "sonnet", systemPrompt: "sp",
+      resume: false, webAccess,
+    });
+    const tools = args[args.indexOf("--tools") + 1];
+    assert.ok(tools === "" || tools === "WebSearch,WebFetch", `leaked: ${tools}`);
+  }
 });
 
 test("runTurn returns the parsed envelope", async () => {

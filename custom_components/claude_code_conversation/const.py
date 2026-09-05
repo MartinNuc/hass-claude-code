@@ -11,6 +11,7 @@ LOGGER = logging.getLogger(__package__)
 CONF_BASE_URL = "base_url"
 CONF_TOKEN = "token"
 CONF_NAME = "name"
+CONF_WEB_ACCESS = "web_access"
 
 # Aliases understood by `claude --model`. A pinned id such as "claude-opus-5"
 # can also be typed in, because the selector allows custom values.
@@ -29,4 +30,8 @@ DEFAULT_TIMEOUT = 90
 RECOMMENDED_CONVERSATION_OPTIONS = {
     CONF_LLM_HASS_API: [llm.LLM_API_ASSIST],
     CONF_PROMPT: llm.DEFAULT_INSTRUCTIONS_PROMPT,
+    # Off by default. An Assist turn runs unattended and is invocable by anyone
+    # who can speak to a voice satellite, so every capability here is opt-in
+    # per agent — you may want it in the chat panel and not in the kitchen.
+    CONF_WEB_ACCESS: False,
 }

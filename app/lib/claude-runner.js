@@ -1,13 +1,29 @@
 "use strict";
 // Spawns `claude -p` for one Assist turn and normalises the result.
 //
-// The Assist session is deliberately the narrowest thing Claude Code can be:
-// --tools "" removes every built-in tool and --strict-mcp-config limits MCP to
-// the HA Assist server, so the whole capability surface is HA's own intents.
-// There is no deny-list to keep in sync as Claude Code grows new tools.
+// The Assist session is deliberately narrow: --tools "" removes every built-in
+// tool, so by default the whole capability surface is Home Assistant's own
+// intents. There is no deny-list to keep in sync as Claude Code grows new
+// tools — an empty allow-list is closed by construction.
+//
+// Two capabilities can be added on top, both off unless asked for:
+//   * web access, per agent, via WEB_TOOLS below;
+//   * MCP servers the user registered with `claude mcp add --scope user`,
+//     which are picked up because --strict-mcp-config is deliberately NOT
+//     passed (that flag is exactly what excludes settings-configured servers).
+//
+// Everything here runs unattended: an Assist turn has no human to answer a
+// permission prompt, and it is invocable by anyone who can speak to a voice
+// satellite. That is why the code-running tools stay out permanently.
 
 const { spawn } = require("child_process");
 const { sessionIdFor, SessionTracker } = require("./session-map.js");
+
+// Hardcoded, never assembled from caller input: a bug or a bad request upstream
+// must not be able to turn "web access" into Bash. Adding a code-running tool
+// here would mean running it unattended at the request of anyone who can talk
+// to a voice satellite — see the header.
+const WEB_TOOLS = "WebSearch,WebFetch";
 
 const RESUME_MISSING_RE = /No conversation found with session ID/i;
 const SESSION_IN_USE_RE = /Session ID .* is already in use/i;
@@ -39,7 +55,7 @@ class ClaudeError extends Error {
   }
 }
 
-function buildArgs({ text, sessionId, model, systemPrompt, resume, mcpConfig, maxBudgetUsd }) {
+function buildArgs({ text, sessionId, model, systemPrompt, resume, mcpConfig, maxBudgetUsd, webAccess = false }) {
   return [
     "-p", text,
     "--output-format", "json",
@@ -58,8 +74,13 @@ function buildArgs({ text, sessionId, model, systemPrompt, resume, mcpConfig, ma
     // entity self-corrects within minutes. Acceptable, but not obvious.
     "--system-prompt-snapshot", "on",
     "--mcp-config", mcpConfig,
-    "--strict-mcp-config",
-    "--tools", "",
+    // NOT --strict-mcp-config. That flag excludes MCP servers configured
+    // through settings, and leaving it off is what lets a user register extra
+    // servers from the add-on's web terminal with `claude mcp add --scope
+    // user` and have the Assist agent see them next to Home Assistant's own.
+    // The trade is real and documented in CLAUDE.md §7: any server added that
+    // way is reachable by voice, unattended.
+    "--tools", webAccess ? WEB_TOOLS : "",
     "--permission-mode", "bypassPermissions",
     "--setting-sources", "",
     "--disable-slash-commands",
@@ -172,9 +193,9 @@ function createRunner({
     });
   }
 
-  async function runTurn({ text, conversationId, model, systemPrompt }) {
+  async function runTurn({ text, conversationId, model, systemPrompt, webAccess = false }) {
     const sessionId = sessionIdFor(conversationId);
-    const base = { text, sessionId, model, systemPrompt, mcpConfig, maxBudgetUsd };
+    const base = { text, sessionId, model, systemPrompt, mcpConfig, maxBudgetUsd, webAccess };
     let resume = tracker.isKnown(sessionId);
 
     let envelope;

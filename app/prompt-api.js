@@ -132,7 +132,7 @@ function createApp({
       return json(res, 400, { error: "invalid_json" });
     }
 
-    const { text, conversation_id: conversationId, model, system_prompt: systemPrompt } = body;
+    const { text, conversation_id: conversationId, model, system_prompt: systemPrompt, web_access: webAccess } = body;
     if (typeof text !== "string" || !text
       || typeof conversationId !== "string" || !conversationId
       || typeof model !== "string" || !model) {
@@ -153,6 +153,10 @@ function createApp({
         conversationId,
         model,
         systemPrompt: typeof systemPrompt === "string" ? systemPrompt : "",
+        // Anything that is not exactly `true` means no web access. An older
+        // integration that never sends the field, or a malformed value, must
+        // fail closed rather than silently widen the tool surface.
+        webAccess: webAccess === true,
       });
       return json(res, 200, {
         text: result.text,

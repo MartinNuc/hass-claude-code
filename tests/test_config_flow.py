@@ -135,7 +135,10 @@ async def test_conversation_subentry_creates_agent(
     from homeassistant.const import CONF_LLM_HASS_API, CONF_MODEL, CONF_PROMPT
     from homeassistant.helpers import llm
 
-    from custom_components.claude_code_conversation.const import CONF_NAME
+    from custom_components.claude_code_conversation.const import (
+        CONF_NAME,
+        CONF_WEB_ACCESS,
+    )
 
     mock_config_entry.add_to_hass(hass)
     with aioresponses() as mocked:
@@ -151,7 +154,12 @@ async def test_conversation_subentry_creates_agent(
 
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"],
-        {CONF_NAME: "Voice", CONF_MODEL: "haiku", CONF_PROMPT: "Be brief."},
+        {
+            CONF_NAME: "Voice",
+            CONF_MODEL: "haiku",
+            CONF_PROMPT: "Be brief.",
+            CONF_WEB_ACCESS: False,
+        },
     )
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
@@ -160,8 +168,34 @@ async def test_conversation_subentry_creates_agent(
         CONF_NAME: "Voice",
         CONF_MODEL: "haiku",
         CONF_PROMPT: "Be brief.",
+        CONF_WEB_ACCESS: False,
         CONF_LLM_HASS_API: [llm.LLM_API_ASSIST],
     }
+
+
+async def test_conversation_subentry_web_access_defaults_off(
+    hass: HomeAssistant, mock_config_entry
+) -> None:
+    """The web toggle is presented off, so creating an agent without touching
+    it produces a closed agent."""
+    import voluptuous as vol
+    from custom_components.claude_code_conversation.const import CONF_WEB_ACCESS
+
+    mock_config_entry.add_to_hass(hass)
+    with aioresponses() as mocked:
+        mocked.get(HEALTH_URL, payload={"ok": True, "claude_version": "2.1.99"})
+        assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    result = await hass.config_entries.subentries.async_init(
+        (mock_config_entry.entry_id, "conversation"),
+        context={"source": config_entries.SOURCE_USER},
+    )
+    key = next(
+        k for k in result["data_schema"].schema if str(k) == CONF_WEB_ACCESS
+    )
+    assert isinstance(key, vol.Required)
+    assert key.default() is False
 
 
 async def test_conversation_subentry_reconfigure(

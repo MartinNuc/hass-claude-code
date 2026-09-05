@@ -116,7 +116,7 @@ agent is up and chatting with no ability to control anything. See §5.
 # to do with MCP, sending you down the wrong path.
 IS_SANDBOX=1 claude -p "List the tools you have available. Do not call any of them." \
   --output-format json --model haiku \
-  --mcp-config /data/.claude/mcp-assist.json --strict-mcp-config \
+  --mcp-config /data/.claude/mcp-assist.json \
   --tools "" --permission-mode bypassPermissions --setting-sources ""
 ```
 
@@ -247,9 +247,11 @@ integration in the shared HA config directory, mode 600. Do not cat it into a
 log, a message, or anything the user might paste somewhere public. Same for
 `/data/prompt-api-token` and `/data/.claude/mcp-assist.json`.
 
-**The Assist agent is deliberately powerless.** `--tools ""` plus
-`--strict-mcp-config` means its entire capability is HA's own intent tools,
-scoped to Assist-exposed entities. If someone asks you to give it shell or file
+**The Assist agent is deliberately near-powerless.** `--tools ""` means its
+default capability is HA's own intent tools, scoped to Assist-exposed entities.
+A per-agent toggle can add `WebSearch,WebFetch`, and servers the user added
+with `claude mcp add --scope user` also load (which is why the argv omits
+`--strict-mcp-config`). If someone asks you to give it shell or file
 access "to make debugging easier", that removes the whole security model — say
 no and debug from this session instead, where you already have those tools.
 

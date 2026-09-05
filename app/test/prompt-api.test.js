@@ -79,8 +79,30 @@ test("POST /conversation passes the request through to the runner", async () => 
     await post(base, GOOD);
     assert.deepEqual(seen, {
       text: "hi", conversationId: "c1", model: "sonnet", systemPrompt: "sp",
+      webAccess: false,
     });
   });
+});
+
+test("POST /conversation grants web access only for an explicit true", async () => {
+  // Fail closed. An older integration omits the field entirely, and a
+  // malformed value must not be read as consent to widen the tool surface.
+  for (const [sent, expected] of [
+    [true, true], [false, false], [undefined, false],
+    ["true", false], [1, false], [null, false],
+  ]) {
+    let seen = null;
+    const runTurn = async (input) => {
+      seen = input;
+      return { text: "", sessionId: "s1", durationMs: 0, costUsd: 0, isError: false };
+    };
+    await withServer({ runTurn }, async (base) => {
+      const body = { ...GOOD };
+      if (sent !== undefined) body.web_access = sent;
+      await post(base, body);
+      assert.equal(seen.webAccess, expected, `web_access ${JSON.stringify(sent)}`);
+    });
+  }
 });
 
 test("POST /conversation returns 400 for an oversized body instead of a connection error", async () => {

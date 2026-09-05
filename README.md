@@ -21,7 +21,7 @@ Both run in one container on your HA host, sharing one Claude login and nothing 
 |---|---|
 | Home Assistant OS or Supervised | A Container/Core install cannot run add-ons |
 | Claude Max or Pro subscription | You log in once, interactively. There is no API-key option. |
-| [HA Vibecode Agent](https://github.com/Coolver/home-assistant-mcp) add-on | Optional, but it's what gives the Remote Control session its Home Assistant tools |
+| [HA Vibecode Agent](https://github.com/Coolver/home-assistant-vibecode-agent) add-on | Optional, but it's what gives the Remote Control session its Home Assistant tools |
 
 ---
 
@@ -55,9 +55,9 @@ That's Remote Control working. It can already use a shell and edit your config. 
 
 This is what lets the Remote Control session read entity states and deploy changes, rather than only editing YAML by hand.
 
-**Install the HA Vibecode Agent add-on.** It's a separate add-on that exposes Home Assistant over MCP. Install and start it.
+**Install the [HA Vibecode Agent](https://github.com/Coolver/home-assistant-vibecode-agent) add-on.** It's a separate add-on that exposes Home Assistant over MCP. Install and start it.
 
-**Get its key.** On the Vibecode Agent's page, open the **Web UI** and scroll to **Step 3: Copy Configuration**. You'll see a JSON block containing `HA_AGENT_KEY`. Copy just that key value — the long string in quotes, not the whole block.
+**Get its key.** On the [Vibecode Agent](https://github.com/Coolver/home-assistant-vibecode-agent)'s page, open the **Web UI** and scroll to **Step 3: Copy Configuration**. You'll see a JSON block containing `HA_AGENT_KEY`. Copy just that key value — the long string in quotes, not the whole block.
 
 > Treat this key like a password. It grants control of your Home Assistant. Don't paste it into a chat, a screenshot, or a public repo. If it ever leaks, the same page has a **Regenerate Key** button.
 
@@ -65,7 +65,7 @@ This is what lets the Remote Control session read entity states and deploy chang
 
 Save, then **Restart** the add-on. The log should say `Writing HA MCP config (agent URL: …)`. If it warns that the key is blank instead, the save didn't take.
 
-> If Claude can't reach the agent, set the URL explicitly: on the Vibecode Agent's **Info** tab, under Controls, copy **Hostname** (something like `a22e6bb0-home-assistant-cursor-agent`) and use `http://<that hostname>:8099`. Don't use the `homeassistant.local` address the Vibecode UI suggests — that one is for Cursor or VS Code on your laptop and does not resolve from inside a container.
+> If Claude can't reach the agent, set the URL explicitly: on the [Vibecode Agent](https://github.com/Coolver/home-assistant-vibecode-agent)'s **Info** tab, under Controls, copy **Hostname** (something like `a22e6bb0-home-assistant-cursor-agent`) and use `http://<that hostname>:8099`. Don't use the `homeassistant.local` address the Vibecode UI suggests — that one is for Cursor or VS Code on your laptop and does not resolve from inside a container.
 
 Ask Claude something like *"what lights do I have?"* from claude.ai/code to confirm.
 
@@ -106,8 +106,30 @@ On the integration's card, click **Add a Claude agent**:
 - **Name** — what you'll see in the pipeline picker
 - **Model** — `sonnet` is the default. Use `haiku` for voice, where speed matters more than depth. `opus` for complex requests you're willing to wait a few seconds for.
 - **Instructions** — an optional system prompt
+- **Allow web search** — off by default; see below
 
 You can add several agents with different models and point different pipelines at each.
+
+### Optional: giving the Assist agent more reach
+
+By default the Assist agent can do exactly one thing: call Home Assistant's intent tools on the entities you exposed. Two capabilities can be added on top, and both are worth a moment's thought first.
+
+**Web search** is a checkbox on each agent. Turn it on and that agent can search and fetch the web. It makes every turn slower and more expensive, so it suits the chat panel better than a kitchen speaker — which is why it's per agent rather than global.
+
+**Extra MCP servers** are added from the add-on's Web UI terminal:
+
+```bash
+claude mcp add --scope user shopping-list -- npx -y your-mcp-server
+claude mcp list          # check it connects
+```
+
+They're stored on the add-on's persistent volume, so they survive restarts, and every Assist agent picks them up alongside Home Assistant's own server.
+
+> **Before you add either**, note what an Assist turn actually is: it runs **unattended**, and it's invocable by anyone who can talk to a voice satellite — guests, children, a TV playing audio. There's no permission prompt, because there's no screen to show one on. So an MCP server that sends email, spends money or unlocks a door becomes reachable by speech. That is fine if you meant it and a nasty surprise if you didn't.
+>
+> Shell, file and code-running tools are never available to the Assist agent, whatever you configure. That limit isn't adjustable.
+
+Servers added this way are also visible to the Remote Control session, and vice versa — it shares the same config and can run `claude mcp add` itself.
 
 ### Step 6 — Point a pipeline at it
 
@@ -130,7 +152,7 @@ Talk to it from the Assist icon in the top-right of the sidebar. Try *"which lig
 
 ## Security
 
-**The two surfaces are deliberately unequal.** Remote Control has a shell and read-write access to your HA config; the real boundary is container isolation plus git, not permission prompts. The Assist agent runs each turn as a separate process with every built-in tool disabled and MCP restricted to Home Assistant's intent tools — its entire capability is the entities you exposed.
+**The two surfaces are deliberately unequal.** Remote Control has a shell and read-write access to your HA config; the real boundary is container isolation plus git, not permission prompts. The Assist agent runs each turn as a separate process with every built-in tool disabled — by default its entire capability is the entities you exposed. Web search can be enabled per agent, and MCP servers you register yourself are available to it. Shell, file and code-running tools never are, because an Assist turn runs unattended for anyone within earshot of a voice satellite.
 
 **Keep your HA config in git.** Every change Claude makes is then committable and revertible. Before any significant work, ask it to commit a checkpoint.
 
@@ -154,7 +176,7 @@ Watch your usage at [claude.ai](https://claude.ai). Stop the add-on when you're 
 
 **No Remote Control session at claude.ai/code** — Confirm the add-on is running and you're signed into the same Claude account. If it's still missing, turn on **Log Claude daemon output** and restart; the log will then show what the session is waiting on.
 
-**Remote Control can't see entities** — Step 4. Check the log says `Writing HA MCP config`. If the key is set and it still can't connect, override the Vibecode Agent URL with that add-on's own hostname from its Info tab.
+**Remote Control can't see entities** — Step 4 ([HA Vibecode Agent](https://github.com/Coolver/home-assistant-vibecode-agent)). Check the log says `Writing HA MCP config`. If the key is set and it still can't connect, override the Vibecode Agent URL with that add-on's own hostname from its Info tab.
 
 **Assist replies but controls nothing** — Look for `HA MCP server reachable (HTTP 200)` in the add-on log. Anything else is printed as a loud multi-line error naming the cause. Then confirm the Model Context Protocol Server integration is installed and your entities are exposed.
 

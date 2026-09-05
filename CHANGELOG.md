@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.9.0
+
+**The Assist agent can now do more than switch your lights, if you ask it to.** Both additions are off by default and neither grants shell or file access — that limit is permanent.
+
+**Web search, per agent.** Each Claude agent gets an "Allow web search" checkbox. Turn it on and that agent can search and fetch the web. It makes every turn slower and more expensive, so it suits the chat panel better than a kitchen speaker — which is why it is per agent rather than global. Existing agents keep it off.
+
+**Your own MCP servers.** Add them from the add-on's Web UI terminal and every Assist agent picks them up next to Home Assistant's own:
+
+```bash
+claude mcp add --scope user shopping-list -- npx -y your-mcp-server
+claude mcp list
+```
+
+Worth knowing before you add either: an Assist turn runs **unattended**, and anyone who can talk to a voice satellite can trigger one — there is no permission prompt, because there is no screen to show one on. A server that sends email, spends money or unlocks a door becomes reachable by speech.
+
 ## 1.8.1
 
 Release notes now appear in Home Assistant's update dialog instead of "No changelog found". This entry exists so you can see that working — there are no functional changes.

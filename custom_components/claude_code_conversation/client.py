@@ -71,7 +71,12 @@ class PromptApiClient:
             raise PromptApiError(f"cannot reach the add-on: {err}") from err
 
     async def async_converse(
-        self, text: str, conversation_id: str, model: str, system_prompt: str
+        self,
+        text: str,
+        conversation_id: str,
+        model: str,
+        system_prompt: str,
+        web_access: bool = False,
     ) -> ConverseResult:
         """Run one turn through `claude -p` in the add-on."""
         payload = {
@@ -79,6 +84,9 @@ class PromptApiClient:
             "conversation_id": conversation_id,
             "model": model,
             "system_prompt": system_prompt,
+            # The add-on treats anything but True as no web access, so a
+            # stale add-on that ignores this field simply stays closed.
+            "web_access": web_access,
         }
         try:
             async with self._session.post(

@@ -202,3 +202,65 @@ async def test_agent_device_reports_the_model(
     assert device is not None
     assert device.model == "haiku"
     assert device.sw_version == "2.1.99"
+
+
+async def test_agent_without_the_option_stays_closed(
+    hass: HomeAssistant, agent_entry
+) -> None:
+    """An agent created before web access existed must not acquire it.
+
+    The `agent_entry` fixture deliberately has no web_access key, which is
+    exactly the shape of a subentry stored by an earlier version. Reading a
+    missing key as anything but False would silently widen the tool surface of
+    every existing agent on upgrade.
+    """
+    with aioresponses() as mocked:
+        entity_id = await _setup(hass, agent_entry, mocked)
+        mocked.post(
+            CONVERSE_URL,
+            payload={"text": "ok", "session_id": "s1", "is_error": False},
+        )
+        await conversation.async_converse(
+            hass, "hello", "conv-1", None, agent_id=entity_id
+        )
+        body = mocked.requests[("POST", URL(CONVERSE_URL))][-1].kwargs["json"]
+
+    assert body["web_access"] is False
+
+
+async def test_agent_with_web_access_forwards_it(hass: HomeAssistant) -> None:
+    """An agent configured with the toggle on asks the add-on for web tools."""
+    from custom_components.claude_code_conversation.const import CONF_WEB_ACCESS
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Claude Code Agent",
+        data={CONF_BASE_URL: "http://addon:8098", CONF_TOKEN: "secret"},
+        subentries_data=[
+            ConfigSubentryData(
+                data={
+                    CONF_NAME: "Voice",
+                    CONF_MODEL: "haiku",
+                    CONF_PROMPT: "Be brief.",
+                    CONF_LLM_HASS_API: [llm.LLM_API_ASSIST],
+                    CONF_WEB_ACCESS: True,
+                },
+                subentry_type="conversation",
+                title="Voice",
+                unique_id=None,
+            )
+        ],
+    )
+
+    with aioresponses() as mocked:
+        entity_id = await _setup(hass, entry, mocked)
+        mocked.post(
+            CONVERSE_URL,
+            payload={"text": "ok", "session_id": "s1", "is_error": False},
+        )
+        await conversation.async_converse(
+            hass, "hello", "conv-1", None, agent_id=entity_id
+        )
+        body = mocked.requests[("POST", URL(CONVERSE_URL))][-1].kwargs["json"]
+
+    assert body["web_access"] is True

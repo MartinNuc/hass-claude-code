@@ -36,9 +36,10 @@ stay on the host.
 
 The two surfaces share a container and one set of Claude credentials and
 **nothing else**. Separate MCP configs, separate tool policy, separate
-processes. The Assist session runs with `--tools ""` and `--strict-mcp-config`,
-so it cannot reach a shell or your config files. Do not "simplify" this by
-merging the two configs.
+processes. The Assist session runs with `--tools ""`, so by default it reaches
+nothing but HA's intent tools; web access and user-registered MCP servers are
+opt-in (§7). It can never reach a shell or your config files. Do not
+"simplify" this by merging the two configs.
 
 Design notes for the Assist surface:
 `docs/superpowers/specs/2026-09-05-claude-assist-conversation-design.md`.
@@ -123,8 +124,8 @@ hass-claude-code/
 ## 5. MCP wiring — two configs, deliberately
 
 **Remote Control** — `/data/.claude/mcp.json`, written by `10-setup.sh`:
-`@coolver/home-assistant-mcp` launched via `npx`, pointed at the separate **HA
-Vibecode Agent** add-on with `HA_AGENT_URL` (default `http://homeassistant:8099`)
+`@coolver/home-assistant-mcp` launched via `npx`, pointed at the separate
+[**HA Vibecode Agent**](https://github.com/Coolver/home-assistant-vibecode-agent) add-on with `HA_AGENT_URL` (default `http://homeassistant:8099`)
 and `HA_AGENT_KEY`. If `ha_agent_key` is blank the script warns loudly and
 writes `{"mcpServers":{}}` — `claude-daemon.js` passes `--mcp-config`
 unconditionally and must never be pointed at a file that does not exist.
@@ -134,8 +135,11 @@ an HTTP MCP server at `http://supervisor/core/api/mcp/assist`, authenticated
 with `SUPERVISOR_TOKEN`. This is the Supervisor's Core API proxy, and it is the
 default because reaching Core directly does not work: on a real HAOS install
 `homeassistant` resolves to the Supervisor network gateway and 8123 is refused
-outright, and the port is not 8123 on every install anyway. Setting
-There is no override and no user configuration on this path — a
+outright, and the port is not 8123 on every install anyway.
+
+This file is passed with `--mcp-config` but *without* `--strict-mcp-config`, so
+servers the user registers with `claude mcp add --scope user` load alongside it
+(§7). There is no override and no user configuration on this path — a
 `ha_mcp_token`/`ha_url` pair existed briefly and was removed: its only observed
 use was a user pointing it at the Vibecode Agent (port 8099), which 404s and
 cost them the agent's tools while the working default sat unused. Do not
@@ -184,23 +188,43 @@ resolve that tension differently, and that asymmetry is the whole design.
   in the Remote Control interface, which is reachable from a phone. This surface
   has a shell and read-write access to `/homeassistant`. Container isolation and
   git-backed config are the real boundary, not the prompt.
-- **Assist** runs `--permission-mode bypassPermissions`, which is only safe
-  because there is nothing left to permit: `--tools ""` removes every built-in
-  tool, `--strict-mcp-config` limits MCP to the HA Assist server,
-  `--setting-sources ""` ignores on-disk settings and `--disable-slash-commands`
-  closes the last escape hatch. Capability is exactly HA's intent tools over
-  Assist-exposed entities. There is no deny-list to keep in sync as Claude Code
-  grows new tools — that is the point of the empty allow-list.
+- **Assist** runs `--permission-mode bypassPermissions`. Its default capability
+  is exactly HA's intent tools over Assist-exposed entities: `--tools ""`
+  removes every built-in tool, `--setting-sources ""` ignores on-disk settings
+  and `--disable-slash-commands` closes the last escape hatch. There is no
+  deny-list to keep in sync as Claude Code grows new tools — an empty
+  allow-list is closed by construction.
+
+  Two capabilities can be added on top, both off unless asked for:
+
+  - **Web tools**, per agent, from the conversation subentry's `web_access`
+    flag. The runner substitutes the hardcoded `WEB_TOOLS` constant; the list
+    is never assembled from caller input, so no request can turn this into
+    `Bash`. A missing key on an older subentry reads as False.
+  - **User MCP servers**, registered with `claude mcp add --scope user` in the
+    web terminal. These load because `--strict-mcp-config` is deliberately NOT
+    passed — per `claude --help`, that flag is precisely what excludes
+    settings-configured servers.
+
+  The governing fact, and the reason code-running tools stay out permanently:
+  **an Assist turn runs unattended.** There is no screen to show a permission
+  prompt on, and the trigger is anyone who can speak to a voice satellite.
+  Entity names and attributes come from devices rather than from the user, so
+  they are an injection surface too. Under those conditions a shell would be
+  remote code execution by speech. Web access and a server the user chose are a
+  considered trade; `Bash` is not, and must not be added behind a flag "for
+  symmetry".
 
   `claude-runner.js` also spawns each turn with `IS_SANDBOX=1`. This is not
   optional and not a loosening: from claude 2.1.261, `bypassPermissions` is
   refused outright under root ("cannot be used with root/sudo privileges"),
   and the add-on container is uid 0, so every Assist turn failed before
-  reaching Home Assistant. The declaration is accurate because the empty
-  allow-list above has already removed the capability the guard protects. It
+  reaching Home Assistant. The declaration is accurate because the
+  allow-list above never contains a code-running tool, so the capability the
+  guard protects is absent whatever the user enabled. It
   is set on the Assist child process only — never on the Remote Control
-  session, which has a real shell and runs `--permission-mode auto`. If the
-  empty allow-list ever goes away, this must go with it.
+  session, which has a real shell and runs `--permission-mode auto`. If a
+  code-running tool is ever admitted to the Assist argv, this must go with it.
 
 A per-turn `--max-budget-usd` caps the cost of a runaway Assist turn.
 
@@ -262,8 +286,10 @@ warm session.
 - [ ] No secret in the image or git history.
 - [ ] Files holding a token are created at mode 600 *before* content is written.
 - [ ] HA tokens scoped; documented what they can and cannot do.
-- [ ] The Assist surface keeps `--tools ""` + `--strict-mcp-config`; no exceptions
-      "to make debugging easier".
+- [ ] The Assist tool list is only ever `""` or the hardcoded `WEB_TOOLS`; no
+      code-running tool reaches it, whatever the caller sends.
+- [ ] `--strict-mcp-config` stays off the Assist argv (user MCP servers depend
+      on it) and the two surfaces still keep separate `--mcp-config` files.
 - [ ] HA config repo is git-backed with a known-good baseline commit.
 - [ ] CAPTCHA/2FA/login flows are never automated by the agent.
 - [ ] Container cannot write outside its intended config/volume paths.
