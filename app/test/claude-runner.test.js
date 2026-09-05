@@ -57,6 +57,20 @@ test("runTurn returns the parsed envelope", async () => {
   assert.equal(out.costUsd, 0.004);
 });
 
+test("runTurn declares the sandbox so bypassPermissions survives running as root", async () => {
+  // Not a hypothetical: the add-on container runs as uid 0, and claude 2.1.261
+  // refuses bypassPermissions there ("cannot be used with root/sudo
+  // privileges"), which killed every Assist turn in production. The fixture
+  // only succeeds when IS_SANDBOX reaches the child, so dropping it from the
+  // runner's spawn env fails this test rather than silently shipping again.
+  const { runner } = runnerWith("root_guard");
+  const out = await runner.runTurn({
+    text: "hi", conversationId: "c1", model: "haiku", systemPrompt: "sp",
+  });
+  assert.equal(out.text, "Hello from Claude");
+  assert.equal(out.isError, false);
+});
+
 test("runTurn surfaces is_error results without throwing", async () => {
   const { runner } = runnerWith("error_result");
   const out = await runner.runTurn({

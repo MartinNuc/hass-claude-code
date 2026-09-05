@@ -109,7 +109,12 @@ fatal on purpose — the add-on starts either way — so an error there means th
 agent is up and chatting with no ability to control anything. See §5.
 
 ```bash
-claude -p "List the tools you have available. Do not call any of them." \
+# IS_SANDBOX=1 is required, not optional: this container runs as root and
+# claude refuses --permission-mode bypassPermissions under root without it
+# ("cannot be used with root/sudo privileges"). prompt-api sets it for every
+# real turn; omit it here and this probe fails for a reason that has nothing
+# to do with MCP, sending you down the wrong path.
+IS_SANDBOX=1 claude -p "List the tools you have available. Do not call any of them." \
   --output-format json --model haiku \
   --mcp-config /data/.claude/mcp-assist.json --strict-mcp-config \
   --tools "" --permission-mode bypassPermissions --setting-sources ""

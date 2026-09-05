@@ -31,6 +31,17 @@ case "${FAKE_CLAUDE_MODE:-success}" in
     printf '%s\n' '{"type":"result","subtype":"error_during_execution","is_error":true,"result":"Unrecognized model: bogus-model-xyz","session_id":"sess-1","duration_ms":30,"total_cost_usd":0}'
     echo '[claude-code:unrecognized_model] {"model":"bogus-model-xyz"}' >&2
     exit 1 ;;
+  root_guard)
+    # Reproduces claude 2.1.261 refusing --permission-mode bypassPermissions
+    # under root: the add-on container is uid 0, so every Assist turn hit this
+    # and died before reaching Home Assistant. Succeeds only when the runner
+    # declares the sandbox, which is what makes the paired test meaningful.
+    if [ "$IS_SANDBOX" = "1" ]; then
+      printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"result":"Hello from Claude","session_id":"sess-1","duration_ms":123,"total_cost_usd":0.004}'
+      exit 0
+    fi
+    echo "--dangerously-skip-permissions cannot be used with root/sudo privileges for security reasons" >&2
+    exit 1 ;;
   hard_fail)
     # Non-zero exit with nothing usable on stdout: still an error.
     echo "something went very wrong" >&2

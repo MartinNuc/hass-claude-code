@@ -187,6 +187,16 @@ resolve that tension differently, and that asymmetry is the whole design.
   Assist-exposed entities. There is no deny-list to keep in sync as Claude Code
   grows new tools — that is the point of the empty allow-list.
 
+  `claude-runner.js` also spawns each turn with `IS_SANDBOX=1`. This is not
+  optional and not a loosening: from claude 2.1.261, `bypassPermissions` is
+  refused outright under root ("cannot be used with root/sudo privileges"),
+  and the add-on container is uid 0, so every Assist turn failed before
+  reaching Home Assistant. The declaration is accurate because the empty
+  allow-list above has already removed the capability the guard protects. It
+  is set on the Assist child process only — never on the Remote Control
+  session, which has a real shell and runs `--permission-mode auto`. If the
+  empty allow-list ever goes away, this must go with it.
+
 A per-turn `--max-budget-usd` caps the cost of a runaway Assist turn.
 
 ---

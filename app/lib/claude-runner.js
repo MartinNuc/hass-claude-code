@@ -83,7 +83,28 @@ function createRunner({
     return new Promise((resolve, reject) => {
       const child = spawnFn(claudeBin, args, {
         cwd: workspace,
-        env: { ...process.env, HOME: "/root", ...extraEnv() },
+        env: {
+          ...process.env,
+          HOME: "/root",
+          // Claude Code refuses --permission-mode bypassPermissions when it is
+          // running as root: "cannot be used with root/sudo privileges for
+          // security reasons", the same guard that blocks
+          // --dangerously-skip-permissions. The add-on container is uid 0 and
+          // that is not ours to change, so without this every Assist turn dies
+          // before it starts. Observed on claude 2.1.261; older builds did not
+          // apply the guard to bypassPermissions, which is why this surfaced
+          // as a sudden regression rather than at first run.
+          //
+          // Declaring the sandbox is accurate here, not a way around the
+          // check. buildArgs spawns this process with --tools "" and
+          // --strict-mcp-config: no shell, no file access, no web, nothing but
+          // HA's own intent tools. The capability the guard exists to protect
+          // is already absent. The Remote Control session, which does have a
+          // shell, runs --permission-mode auto in a different process and
+          // never sees this variable.
+          IS_SANDBOX: "1",
+          ...extraEnv(),
+        },
         // Own process group, so the timeout can kill claude *and* the MCP
         // subprocesses it started rather than orphaning them.
         detached: true,
