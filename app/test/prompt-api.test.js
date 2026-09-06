@@ -36,6 +36,20 @@ test("GET /health reports the claude version", async () => {
   });
 });
 
+test("GET /health reports the integration version this image ships", async () => {
+  // The integration compares this against its own to notice that Home
+  // Assistant is still running files the add-on already replaced.
+  await withServer(
+    { runTurn: async () => ({}), integrationVersion: "9.9.9" },
+    async (base) => {
+      const res = await fetch(`${base}/health`, {
+        headers: { Authorization: `Bearer ${TOKEN}` },
+      });
+      assert.equal((await res.json()).integration_version, "9.9.9");
+    }
+  );
+});
+
 test("GET /health rejects a bad token, so the config flow can tell why", async () => {
   await withServer({ runTurn: async () => ({}) }, async (base) => {
     assert.equal((await health(base, "wrong")).status, 401);

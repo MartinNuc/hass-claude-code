@@ -70,5 +70,11 @@
     "unsupported_attachment": {
       "message": "Sorry, I can't look at images yet."
     }
+  },
+  "issues": {
+    "restart_required": {
+      "title": "Restart Home Assistant to finish updating Claude",
+      "description": "The Claude Code Agent add-on has installed version {deployed} of its Home Assistant integration, but Home Assistant is still running version {running}. New options and fixes will not appear until you restart.\n\nGo to Settings > System and select Restart Home Assistant. Reloading the integration is not enough — custom integrations are only loaded when Home Assistant starts."
+    }
   }
 }

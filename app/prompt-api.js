@@ -84,7 +84,8 @@ function readBody(req, { limitBytes = 1024 * 1024, timeoutMs = DEFAULT_BODY_TIME
 }
 
 function createApp({
-  runTurn, token, claudeVersion, maxConcurrent = 2, bodyTimeoutMs = DEFAULT_BODY_TIMEOUT_MS,
+  runTurn, token, claudeVersion, integrationVersion = "unknown",
+  maxConcurrent = 2, bodyTimeoutMs = DEFAULT_BODY_TIMEOUT_MS,
 }) {
   let inFlight = 0;
 
@@ -107,7 +108,13 @@ function createApp({
     }
 
     if (isHealth) {
-      return json(res, 200, { ok: true, claude_version: claudeVersion });
+      return json(res, 200, {
+        ok: true,
+        claude_version: claudeVersion,
+        // What this image ships. The integration compares it against its own
+        // version to notice that Home Assistant has not reloaded it yet.
+        integration_version: integrationVersion,
+      });
     }
 
     let raw;
@@ -178,6 +185,20 @@ function createApp({
   });
 }
 
+// The integration version baked into this image. The copy running inside Home
+// Assistant reports its own; a mismatch means the files on disk were updated
+// but Core has not reloaded them, which is invisible from the HA side and is
+// exactly the confusion this is here to end.
+function detectIntegrationVersion() {
+  try {
+    return JSON.parse(fs.readFileSync(
+      "/app/custom_components/claude_code_conversation/manifest.json", "utf8"
+    )).version || "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
 function detectClaudeVersion() {
   try {
     const out = execFileSync(process.env.CLAUDE_BIN || "claude", ["--version"], {
@@ -192,7 +213,11 @@ function detectClaudeVersion() {
 function main() {
   const token = fs.readFileSync(TOKEN_FILE, "utf8").trim();
   const { runTurn } = createRunner();
-  const server = createApp({ runTurn, token, claudeVersion: detectClaudeVersion() });
+  const server = createApp({
+    runTurn, token,
+    claudeVersion: detectClaudeVersion(),
+    integrationVersion: detectIntegrationVersion(),
+  });
   server.listen(PORT, () => console.log(`[prompt-api] listening on :${PORT}`));
 }
 

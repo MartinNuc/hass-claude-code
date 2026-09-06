@@ -329,6 +329,16 @@ Every user-visible change therefore does three things together:
    "No changelog found" — the reason this file exists.
 3. Tag the merge commit `v<version>`.
 
+**If `custom_components/.../manifest.json` changed, bump its version too, and
+say "restart Home Assistant" in the changelog entry's first line.** The add-on
+copies the integration in at container start, but Core only loads custom
+integrations at startup — so until the user restarts, they have updated the
+add-on and nothing appears to have changed. The deploy script does log it, but
+nobody reads an add-on log after clicking Update. The integration also raises a
+`restart_required` repair when the version the add-on reports on `/health`
+differs from its own, which covers the user who skips the changelog; the
+changelog line is what reaches everyone else. Both, not either.
+
 The changelog is read by someone deciding whether to click Update, on a phone,
 who does not know the internals. So: what changed for them and whether it
 needs action from them — not which file moved. A breaking change leads with

@@ -1,12 +1,22 @@
 # Changelog
 
+## 1.10.1
+
+**Home Assistant now tells you when a restart is needed.** Updating the add-on replaces the integration's files, but Home Assistant keeps running the old ones until Core restarts — so new options simply did not appear, with nothing anywhere explaining why. There is now a repair notice under Settings when that happens, the way HACS does it.
+
+Nothing else changed. If you updated to 1.10.0 and could not find the Effort setting, this was why: restart Home Assistant and it is there.
+
 ## 1.10.0
+
+**Restart Home Assistant after updating**, or the new setting will not appear.
 
 **Effort is now configurable per agent**, in the dropdown next to the model: `low`, `medium`, `high`, `xhigh` or `max`. It controls how hard Claude thinks before answering.
 
 Leave it empty and nothing changes — Claude Code's own default applies, which is what your existing agents already do. `low` is worth trying for voice, where a fast answer beats a thorough one. Model and effort are independent, so a fast model thinking hard is a perfectly sensible combination.
 
 ## 1.9.0
+
+**Restart Home Assistant after updating**, or the new options will not appear.
 
 **The Assist agent can now do more than switch your lights, if you ask it to.** Both additions are off by default and neither grants shell or file access — that limit is permanent.
 
