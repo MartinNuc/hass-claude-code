@@ -25,6 +25,13 @@ const { sessionIdFor, SessionTracker } = require("./session-map.js");
 // to a voice satellite — see the header.
 const WEB_TOOLS = "WebSearch,WebFetch";
 
+// Accepted by `claude --effort`. An unrecognised value only makes claude warn
+// and fall back, so this list exists to keep junk out of the argv rather than
+// to prevent a failure. Anything not in it means the flag is omitted entirely,
+// which leaves claude's own default in charge — the behaviour every agent had
+// before this option existed.
+const EFFORT_LEVELS = new Set(["low", "medium", "high", "xhigh", "max"]);
+
 const RESUME_MISSING_RE = /No conversation found with session ID/i;
 const SESSION_IN_USE_RE = /Session ID .* is already in use/i;
 
@@ -55,8 +62,9 @@ class ClaudeError extends Error {
   }
 }
 
-function buildArgs({ text, sessionId, model, systemPrompt, resume, mcpConfig, maxBudgetUsd, webAccess = false }) {
+function buildArgs({ text, sessionId, model, systemPrompt, resume, mcpConfig, maxBudgetUsd, webAccess = false, effort = "" }) {
   return [
+    ...(EFFORT_LEVELS.has(effort) ? ["--effort", effort] : []),
     "-p", text,
     "--output-format", "json",
     "--model", model,
@@ -193,9 +201,9 @@ function createRunner({
     });
   }
 
-  async function runTurn({ text, conversationId, model, systemPrompt, webAccess = false }) {
+  async function runTurn({ text, conversationId, model, systemPrompt, webAccess = false, effort = "" }) {
     const sessionId = sessionIdFor(conversationId);
-    const base = { text, sessionId, model, systemPrompt, mcpConfig, maxBudgetUsd, webAccess };
+    const base = { text, sessionId, model, systemPrompt, mcpConfig, maxBudgetUsd, webAccess, effort };
     let resume = tracker.isKnown(sessionId);
 
     let envelope;
@@ -225,4 +233,4 @@ function createRunner({
   return { runTurn };
 }
 
-module.exports = { buildArgs, createRunner, ClaudeError };
+module.exports = { buildArgs, createRunner, ClaudeError, EFFORT_LEVELS };

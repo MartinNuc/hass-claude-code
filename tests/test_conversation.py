@@ -226,6 +226,8 @@ async def test_agent_without_the_option_stays_closed(
         body = mocked.requests[("POST", URL(CONVERSE_URL))][-1].kwargs["json"]
 
     assert body["web_access"] is False
+    # Same story for effort: no key means no flag, not a default of our own.
+    assert body["effort"] == ""
 
 
 async def test_agent_with_web_access_forwards_it(hass: HomeAssistant) -> None:

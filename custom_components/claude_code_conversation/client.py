@@ -77,6 +77,7 @@ class PromptApiClient:
         model: str,
         system_prompt: str,
         web_access: bool = False,
+        effort: str = "",
     ) -> ConverseResult:
         """Run one turn through `claude -p` in the add-on."""
         payload = {
@@ -87,6 +88,9 @@ class PromptApiClient:
             # The add-on treats anything but True as no web access, so a
             # stale add-on that ignores this field simply stays closed.
             "web_access": web_access,
+            # Empty means "let Claude Code decide", which the add-on turns into
+            # an omitted flag rather than a default of its own choosing.
+            "effort": effort,
         }
         try:
             async with self._session.post(

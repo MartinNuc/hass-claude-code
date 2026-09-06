@@ -5,7 +5,7 @@ const os = require("node:os");
 const path = require("node:path");
 const fs = require("node:fs");
 
-const { buildArgs, createRunner, ClaudeError } = require("../lib/claude-runner.js");
+const { buildArgs, createRunner, ClaudeError, EFFORT_LEVELS } = require("../lib/claude-runner.js");
 const { SessionTracker } = require("../lib/session-map.js");
 
 const FAKE = path.join(__dirname, "fixtures", "fake-claude");
@@ -77,6 +77,30 @@ test("buildArgs never admits a code-running tool, whatever it is handed", () => 
     });
     const tools = args[args.indexOf("--tools") + 1];
     assert.ok(tools === "" || tools === "WebSearch,WebFetch", `leaked: ${tools}`);
+  }
+});
+
+test("buildArgs passes every effort level claude accepts", () => {
+  for (const level of EFFORT_LEVELS) {
+    const args = buildArgs({
+      text: "hi", sessionId: "s1", model: "sonnet", systemPrompt: "sp",
+      resume: false, effort: level,
+    });
+    assert.equal(args[args.indexOf("--effort") + 1], level, level);
+  }
+});
+
+test("buildArgs omits --effort for anything claude would not accept", () => {
+  // Omitting leaves claude's own default in charge, which is what every agent
+  // had before this option existed. Passing junk through would only earn a
+  // warning on stderr and the same default, so filtering here keeps the argv
+  // honest rather than preventing a failure.
+  for (const bad of ["", "bogus", "LOW", " low ", undefined, null, 42, {}, ["low"]]) {
+    const args = buildArgs({
+      text: "hi", sessionId: "s1", model: "sonnet", systemPrompt: "sp",
+      resume: false, effort: bad,
+    });
+    assert.ok(!args.includes("--effort"), `leaked: ${JSON.stringify(bad)}`);
   }
 });
 

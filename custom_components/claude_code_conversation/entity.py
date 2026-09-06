@@ -16,7 +16,7 @@ from .client import (
     PromptApiError,
     PromptApiTimeoutError,
 )
-from .const import CONF_WEB_ACCESS, DOMAIN, LOGGER
+from .const import CONF_EFFORT, CONF_WEB_ACCESS, DOMAIN, LOGGER
 
 
 class ClaudeCodeBaseEntity(Entity):
@@ -71,6 +71,7 @@ class ClaudeCodeBaseEntity(Entity):
                 # Agents created before this option existed have no key at
                 # all, and they must stay closed rather than inherit it.
                 web_access=bool(self.subentry.data.get(CONF_WEB_ACCESS, False)),
+                effort=self.subentry.data.get(CONF_EFFORT) or "",
             )
         except PromptApiAuthError as err:
             # Must come first: PromptApiAuthError subclasses PromptApiError, so

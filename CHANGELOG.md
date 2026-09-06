@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.0
+
+**Effort is now configurable per agent**, in the dropdown next to the model: `low`, `medium`, `high`, `xhigh` or `max`. It controls how hard Claude thinks before answering.
+
+Leave it empty and nothing changes — Claude Code's own default applies, which is what your existing agents already do. `low` is worth trying for voice, where a fast answer beats a thorough one. Model and effort are independent, so a fast model thinking hard is a perfectly sensible combination.
+
 ## 1.9.0
 
 **The Assist agent can now do more than switch your lights, if you ask it to.** Both additions are off by default and neither grants shell or file access — that limit is permanent.

@@ -12,6 +12,13 @@ CONF_BASE_URL = "base_url"
 CONF_TOKEN = "token"
 CONF_NAME = "name"
 CONF_WEB_ACCESS = "web_access"
+CONF_EFFORT = "effort"
+
+# Accepted by `claude --effort`. Left unset the flag is not passed at all and
+# Claude Code's own default applies, which is what agents created before this
+# option existed keep doing. An unrecognised value only makes claude warn and
+# fall back, so this is not a safety boundary — just a tidy argv.
+EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"]
 
 # Aliases understood by `claude --model`. A pinned id such as "claude-opus-5"
 # can also be typed in, because the selector allows custom values.

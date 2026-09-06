@@ -30,10 +30,12 @@ from homeassistant.helpers.selector import (
 from .client import PromptApiAuthError, PromptApiClient, PromptApiError
 from .const import (
     CONF_BASE_URL,
+    CONF_EFFORT,
     CONF_NAME,
     CONF_TOKEN,
     CONF_WEB_ACCESS,
     DOMAIN,
+    EFFORT_LEVELS,
     LOGGER,
     MODELS,
     RECOMMENDED_CONVERSATION_OPTIONS,
@@ -233,6 +235,17 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
                             options=MODELS,
                             mode=SelectSelectorMode.DROPDOWN,
                             custom_value=True,
+                        )
+                    ),
+                    vol.Optional(
+                        CONF_EFFORT,
+                        description={
+                            "suggested_value": self.options.get(CONF_EFFORT)
+                        },
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=EFFORT_LEVELS,
+                            mode=SelectSelectorMode.DROPDOWN,
                         )
                     ),
                     vol.Optional(

@@ -201,6 +201,11 @@ resolve that tension differently, and that asymmetry is the whole design.
     flag. The runner substitutes the hardcoded `WEB_TOOLS` constant; the list
     is never assembled from caller input, so no request can turn this into
     `Bash`. A missing key on an older subentry reads as False.
+  - **Effort**, per agent, from the subentry's `effort` key, passed as
+    `--effort`. Not a capability and not a safety boundary — an unrecognised
+    value only makes claude warn and fall back — but validated against
+    `EFFORT_LEVELS` anyway so the argv never carries junk. Unset omits the
+    flag, which is what agents predating the option keep doing.
   - **User MCP servers**, registered with `claude mcp add --scope user` in the
     web terminal. These load because `--strict-mcp-config` is deliberately NOT
     passed — per `claude --help`, that flag is precisely what excludes

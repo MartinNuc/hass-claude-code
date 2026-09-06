@@ -131,8 +131,29 @@ async def test_async_converse_sends_expected_body_and_auth(
         "model": "sonnet",
         "system_prompt": "be nice",
         "web_access": False,
+        "effort": "",
     }
     assert request.kwargs["headers"]["Authorization"] == f"Bearer {TOKEN}"
+
+
+async def test_async_converse_forwards_effort(client: PromptApiClient) -> None:
+    """A configured effort level reaches the add-on verbatim.
+
+    Empty is meaningful and is the default: the add-on turns it into an
+    omitted --effort flag, leaving Claude Code's own default in charge rather
+    than substituting one of ours.
+    """
+    with aioresponses() as mocked:
+        mocked.post(
+            CONVERSE_URL,
+            payload={"text": "hi", "session_id": "s1", "is_error": False},
+        )
+        await client.async_converse(
+            "hello", "conv-1", "sonnet", "be nice", effort="xhigh"
+        )
+        request = mocked.requests[("POST", URL(CONVERSE_URL))][0]
+
+    assert request.kwargs["json"]["effort"] == "xhigh"
 
 
 async def test_async_converse_defaults_web_access_closed(

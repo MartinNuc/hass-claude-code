@@ -104,7 +104,11 @@ The connection details are pre-filled from the add-on — just click **Submit**.
 On the integration's card, click **Add a Claude agent**:
 
 - **Name** — what you'll see in the pipeline picker
-- **Model** — `sonnet` is the default. Use `haiku` for voice, where speed matters more than depth. `opus` for complex requests you're willing to wait a few seconds for.
+- **Model** — `sonnet` is the default. Use `haiku` for voice, where speed matters more than depth. `opus` for complex requests you're willing to wait a few seconds for. Model and effort are independent knobs — a fast model at high effort and a strong model at low effort are both reasonable places to land.
+- **Effort** — how hard Claude thinks before answering. Leave it empty to use
+  Claude Code's default. `low` suits voice, where a fast answer beats a
+  thorough one; `high` and above are worth it for requests that need real
+  reasoning, at the cost of seconds and tokens on every turn.
 - **Instructions** — an optional system prompt
 - **Allow web search** — off by default; see below
 

@@ -79,7 +79,7 @@ test("POST /conversation passes the request through to the runner", async () => 
     await post(base, GOOD);
     assert.deepEqual(seen, {
       text: "hi", conversationId: "c1", model: "sonnet", systemPrompt: "sp",
-      webAccess: false,
+      webAccess: false, effort: "",
     });
   });
 });
@@ -101,6 +101,24 @@ test("POST /conversation grants web access only for an explicit true", async () 
       if (sent !== undefined) body.web_access = sent;
       await post(base, body);
       assert.equal(seen.webAccess, expected, `web_access ${JSON.stringify(sent)}`);
+    });
+  }
+});
+
+test("POST /conversation forwards effort as a string, or empty", async () => {
+  for (const [sent, expected] of [
+    ["low", "low"], ["max", "max"], [undefined, ""], [null, ""], [7, ""], [{}, ""],
+  ]) {
+    let seen = null;
+    const runTurn = async (input) => {
+      seen = input;
+      return { text: "", sessionId: "s1", durationMs: 0, costUsd: 0, isError: false };
+    };
+    await withServer({ runTurn }, async (base) => {
+      const body = { ...GOOD };
+      if (sent !== undefined) body.effort = sent;
+      await post(base, body);
+      assert.equal(seen.effort, expected, `effort ${JSON.stringify(sent)}`);
     });
   }
 });

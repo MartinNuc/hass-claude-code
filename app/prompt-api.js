@@ -132,7 +132,7 @@ function createApp({
       return json(res, 400, { error: "invalid_json" });
     }
 
-    const { text, conversation_id: conversationId, model, system_prompt: systemPrompt, web_access: webAccess } = body;
+    const { text, conversation_id: conversationId, model, system_prompt: systemPrompt, web_access: webAccess, effort } = body;
     if (typeof text !== "string" || !text
       || typeof conversationId !== "string" || !conversationId
       || typeof model !== "string" || !model) {
@@ -157,6 +157,9 @@ function createApp({
         // integration that never sends the field, or a malformed value, must
         // fail closed rather than silently widen the tool surface.
         webAccess: webAccess === true,
+        // The runner validates against its own list; a non-string here just
+        // becomes "", which means "omit the flag and use claude's default".
+        effort: typeof effort === "string" ? effort : "",
       });
       return json(res, 200, {
         text: result.text,
